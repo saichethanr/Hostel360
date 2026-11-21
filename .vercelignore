@@ -1,0 +1,7 @@
+.amp/
+.git/
+.env*
+data/
+tests/
+node_modules/
+dist/
