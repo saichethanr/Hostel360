@@ -310,9 +310,10 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
   const [joinRole, setJoinRole] = useState("Student");
   const [joined, setJoined] = useState(false);
   // Pending registration waiting for the email code: the details stay in the form.
-  const [verifying, setVerifying] = useState<{ email: string; body: Row } | null>(
-    null,
-  );
+  const [verifying, setVerifying] = useState<{
+    email: string;
+    body: Row;
+  } | null>(null);
   const switchMode = (next: string) => {
     setMode(next);
     setJoined(false);
@@ -396,101 +397,109 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
       </div>
     );
   return (
-    <div className="setup-page community-page">
-      <div className="eyebrow">{HOSTEL.short} HOSTEL</div>
-      <h1>{HOSTEL.name}</h1>
-      <div className="tabs" aria-label="Hostel access">
-        {["Sign in", "Register"].map((label) => (
-          <button
-            key={label}
-            className={mode === label ? "active" : ""}
-            onClick={() => switchMode(label)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <Form
-        key={mode}
-        title={mode}
-        description={
-          mode === "Register"
-            ? "Students send their hostel details now. The Admin assigns your room and approves you in one step."
-            : "Use your own email and password."
-        }
-        fields={[
-          ...(mode === "Register" ? [field("name", "Your full name")] : []),
-          field("email", "Email", "email"),
-          field(
-            "password",
-            mode === "Sign in" ? "Password" : "Password (12+ characters)",
-            "password",
-          ),
-        ]}
-        before={
-          mode === "Register" ? (
-            <label className="field">
-              <span>I am registering as</span>
-              <select
-                name="role"
-                value={joinRole}
-                onChange={(e) => setJoinRole(e.target.value)}
-              >
-                <option>Student</option>
-                <option>Manager</option>
-              </select>
-            </label>
-          ) : null
-        }
-        after={
-          mode === "Register" && joinRole === "Student" ? (
-            <fieldset className="join-details">
-              <legend>Your hostel details</legend>
-              <p>
-                Sent with your registration. The Admin assigns your room and
-                approves you in one step.
-              </p>
-              <div className="form-grid">
-                {studentDetailFields(today()).map((f) => (
-                  <FieldInput key={f.name} f={f} />
-                ))}
-              </div>
-            </fieldset>
-          ) : null
-        }
-        submit={mode === "Register" ? "Send registration" : mode}
-        onSubmit={async (v) => {
-          if (mode === "Register") {
-            const detailKeys = studentDetailFields(today()).map((f) => f.name);
-            const application = Object.fromEntries(
-              detailKeys.map((k) => [k, k === "year" ? Number(v[k]) : v[k]]),
-            );
-            const body = {
-              name: v.name,
-              email: v.email,
-              password: v.password,
-              role: v.role,
-              code: HOSTEL.code,
-              ...(v.role === "Student" ? { application } : {}),
-            };
-            // New emails get a code first; existing accounts go straight on.
-            const check = await api<{ required: boolean }>("/email/code", {
-              email: v.email,
-            });
-            if (check.required) {
-              setVerifying({ email: String(v.email), body });
+    <>
+      <header className="campus-hero">
+        <div className="campus-hero-caption">
+          <div className="eyebrow light">{HOSTEL.short} HOSTEL</div>
+          <h1>{HOSTEL.name}</h1>
+        </div>
+      </header>
+      <div className="setup-page community-page campus-form">
+        <div className="tabs" aria-label="Hostel access">
+          {["Sign in", "Register"].map((label) => (
+            <button
+              key={label}
+              className={mode === label ? "active" : ""}
+              onClick={() => switchMode(label)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <Form
+          key={mode}
+          title={mode}
+          description={
+            mode === "Register"
+              ? "Students send their hostel details now. The Admin assigns your room and approves you in one step."
+              : "Use your own email and password."
+          }
+          fields={[
+            ...(mode === "Register" ? [field("name", "Your full name")] : []),
+            field("email", "Email", "email"),
+            field(
+              "password",
+              mode === "Sign in" ? "Password" : "Password (12+ characters)",
+              "password",
+            ),
+          ]}
+          before={
+            mode === "Register" ? (
+              <label className="field">
+                <span>I am registering as</span>
+                <select
+                  name="role"
+                  value={joinRole}
+                  onChange={(e) => setJoinRole(e.target.value)}
+                >
+                  <option>Student</option>
+                  <option>Manager</option>
+                </select>
+              </label>
+            ) : null
+          }
+          after={
+            mode === "Register" && joinRole === "Student" ? (
+              <fieldset className="join-details">
+                <legend>Your hostel details</legend>
+                <p>
+                  Sent with your registration. The Admin assigns your room and
+                  approves you in one step.
+                </p>
+                <div className="form-grid">
+                  {studentDetailFields(today()).map((f) => (
+                    <FieldInput key={f.name} f={f} />
+                  ))}
+                </div>
+              </fieldset>
+            ) : null
+          }
+          submit={mode === "Register" ? "Send registration" : mode}
+          onSubmit={async (v) => {
+            if (mode === "Register") {
+              const detailKeys = studentDetailFields(today()).map(
+                (f) => f.name,
+              );
+              const application = Object.fromEntries(
+                detailKeys.map((k) => [k, k === "year" ? Number(v[k]) : v[k]]),
+              );
+              const body = {
+                name: v.name,
+                email: v.email,
+                password: v.password,
+                role: v.role,
+                code: HOSTEL.code,
+                ...(v.role === "Student" ? { application } : {}),
+              };
+              // New emails get a code first; existing accounts go straight on.
+              const check = await api<{ required: boolean }>("/email/code", {
+                email: v.email,
+              });
+              if (check.required) {
+                setVerifying({ email: String(v.email), body });
+                return;
+              }
+              await api("/communities/join", body);
+              await api("/login", { email: v.email, password: v.password });
+              setJoined(true);
               return;
             }
-            await api("/communities/join", body);
             await api("/login", { email: v.email, password: v.password });
-            setJoined(true);
-            return;
-          }
-          await api("/login", { email: v.email, password: v.password });
-          await onLogin();
-        }}
-      />
-    </div>
+            await onLogin();
+          }}
+        />
+      </div>
+    </>
   );
 }
 
