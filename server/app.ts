@@ -21,7 +21,7 @@ import {
   admin,
   supabase,
 } from "./http.js";
-import { registerOperations } from "./operations.js";
+import { feeDefaults, registerOperations } from "./operations.js";
 import { saveBackup } from "./backup.js";
 import { registerCommunities } from "./communities.js";
 import { Gateway } from "./gateway.js";
@@ -45,10 +45,12 @@ export function createApp(
       detail,
       now(),
     );
-  const settings = async () =>
-    Object.fromEntries(
+  const settings = async (): Promise<Record<string, string>> => ({
+    ...feeDefaults,
+    ...Object.fromEntries(
       (await db.all("SELECT * FROM settings")).map((r) => [r.key, r.value]),
-    );
+    ),
+  });
   const demands = async (sid?: number) =>
     db.all(
       `SELECT d.*,s.name,s.code,s.department,

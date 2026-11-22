@@ -73,6 +73,7 @@ import {
   useConfirm,
   ThemeToggle,
   MembershipStatus,
+  FeeStructure,
 } from "./operations";
 import "./styles.css";
 import "./dark.css";
@@ -1270,6 +1271,7 @@ function CollectionChart({
   const end =
     data.demands
       .map((d) => d.period)
+      .filter((p) => p.length === 7) // months only, not academic years
       .sort()
       .at(-1) || data.today.slice(0, 7);
   const months = Array.from({ length: 6 }, (_, i) =>
@@ -1932,7 +1934,16 @@ function DemandTable({
                     {d.category}
                     {d.days != null
                       ? ` · ${d.days} days × ${money(d.rate)}`
-                      : ""}
+                      : d.category === "Mess"
+                        ? ""
+                        : ` · ${
+                            // "Management fee" says nothing new; Fund lines do.
+                            d.description
+                              .replace(/^Admission · /, "")
+                              .startsWith(d.category)
+                              ? "Admission"
+                              : d.description.replace(/^Admission · /, "")
+                          }`}
                   </small>
                 </td>
                 <td className="amount">
@@ -3190,6 +3201,7 @@ function SettingsPage({
           data.
         </div>
       </section>
+      <FeeStructure data={data} onSaved={onSaved} />
     </div>
   );
 }

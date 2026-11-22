@@ -96,10 +96,68 @@ export async function submitApplication(
   await audit(actor, "Application submitted", `#${r.id} · ${b.name}`);
   return r;
 }
+// Admission fees in paise, editable by the Admin in Settings. Freshers also
+// pay a refundable mess caution deposit, booked under Fund.
+export const feeDefaults: Record<string, string> = {
+  fee_fresher_management: "500000",
+  fee_fresher_fund: "250000",
+  fee_fresher_caution: "400000",
+  fee_fresher_establishment: "840000",
+  fee_existing_management: "500000",
+  fee_existing_fund: "250000",
+  fee_existing_establishment: "840000",
+};
+const feeLines = (type: string) =>
+  [
+    ["Management", "Management fee", "management"],
+    ["Fund", "Hostel fund", "fund"],
+    ...(type === "Fresher" ? [["Fund", "Mess caution deposit", "caution"]] : []),
+    ["Establishment", "Establishment fee", "establishment"],
+  ].map(([category, label, key]) => ({
+    category,
+    label,
+    key: `fee_${type.toLowerCase()}_${key}`,
+  }));
 export function registerOperations(
   app: Express,
   { db, audit, demands, payments, settings }: Services,
 ) {
+  // Adds one due per admission fee line; returns the total charged.
+  async function chargeAdmission(
+    studentId: number,
+    type: string,
+    academicYear: string,
+    actor: { id: number },
+  ) {
+    const fees = await settings();
+    const rows = feeLines(type)
+      .map((l) => ({ ...l, amount: Number(fees[l.key]) }))
+      .filter((l) => l.amount > 0);
+    if (rows.length)
+      await db.insertRows(
+        "demands",
+        [
+          "student_id",
+          "category",
+          "period",
+          "description",
+          "amount",
+          "finalized_by",
+          "created_at",
+        ],
+        rows.map((r) => [
+          studentId,
+          r.category,
+          // Admission is billed per academic year; only Mess is monthly.
+          academicYear,
+          `Admission · ${r.label}`,
+          r.amount,
+          actor.id,
+          now(),
+        ]),
+      );
+    return rows.reduce((sum, r) => sum + r.amount, 0);
+  }
   function studentInput(b: Row) {
     for (const key of ["name", "department", "room", "phone", "guardian"])
       ensure(
@@ -342,6 +400,14 @@ export function registerOperations(
         );
       if (b.status === "Rejected")
         ensure(text(b.reason, 500), "Give a reason for rejection.");
+      // Approval puts the admission fees for this student type in their dues.
+      if (sid)
+        await chargeAdmission(
+          sid,
+          a.admission_type,
+          a.academic_year,
+          me(res),
+        );
       if (sid && a.user_id)
         await db.run(
           "UPDATE users SET student_id=? WHERE id=?",
@@ -373,163 +439,88 @@ export function registerOperations(
     });
     res.json(result);
   });
-  app.get("/api/components", async (_req, res) => {
-    staff(res);
-    res.json(
-      await db.all(
-        "SELECT * FROM fee_components ORDER BY academic_year DESC,category,name",
-      ),
-    );
-  });
-  app.post("/api/components", async (req, res) => {
+  // The Admin's fee structure: saved amounts apply to later approvals and
+  // promotions only; dues already issued never change.
+  app.post("/api/fee-structure", async (req, res) => {
     admin(res);
-    const b = req.body;
+    const keys = Object.keys(feeDefaults);
     ensure(
-      categories.slice(1).includes(b.category) &&
-        text(b.name) &&
-        integer(b.amount) &&
-        /^20\d{2}-20\d{2}$/.test(b.academic_year) &&
-        ["All", "Fresher", "Existing", "B.E."].includes(b.applicability),
-      "Enter category, name, amount, academic year and applicability.",
+      keys.every(
+        (k) =>
+          Number.isInteger(req.body[k]) &&
+          req.body[k] >= 0 &&
+          req.body[k] <= 100_000_000,
+      ),
+      "Enter every fee amount, from ₹0 up to ₹10,00,000.",
     );
-    ensure([0, 1].includes(b.active), "Choose an active status.");
-    const applicability = /caution/i.test(b.name)
-      ? "Fresher"
-      : b.category === "Management" && /application/i.test(b.name)
-        ? "B.E."
-        : b.applicability;
     await db.transaction(async () => {
-      if (b.id) {
-        ensure(
-          await db.get("SELECT id FROM fee_components WHERE id=?", b.id),
-          "Fee component not found.",
-          404,
-        );
+      for (const k of keys)
         await db.run(
-          "UPDATE fee_components SET category=?,name=?,amount=?,academic_year=?,applicability=?,active=? WHERE id=?",
-          b.category,
-          b.name.trim(),
-          b.amount,
-          b.academic_year,
-          applicability,
-          b.active,
-          b.id,
-        );
-      } else
-        await db.run(
-          "INSERT INTO fee_components (category,name,amount,academic_year,applicability,active) VALUES (?,?,?,?,?,?)",
-          b.category,
-          b.name.trim(),
-          b.amount,
-          b.academic_year,
-          applicability,
-          b.active,
+          `INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(${db.key("key")}) DO UPDATE SET value=excluded.value`,
+          k,
+          String(req.body[k]),
         );
       await audit(
         me(res),
-        "Fee component configured",
-        `${b.category} · ${b.name} · ${b.academic_year} · ${b.amount / 100} INR · ${applicability}`,
+        "Fee structure updated",
+        keys.map((k) => `${k.slice(4)}: ${req.body[k] / 100} INR`).join(" · "),
       );
     });
     res.json({ ok: true });
   });
-  const admissionPreview = async (b: Row) => {
+  // Year-end promotion: Year 1 → 2 and 2 → 3, each charged the Existing
+  // student admission fees for the new academic year.
+  app.post("/api/students/promote", async (req, res) => {
+    admin(res);
+    const b = req.body;
     ensure(
       /^20\d{2}-20\d{2}$/.test(b.academic_year) &&
-        validMonth(b.period) &&
-        Array.isArray(b.student_ids) &&
+        Number(b.academic_year.slice(5)) === Number(b.academic_year.slice(0, 4)) + 1,
+      "Enter the new academic year as YYYY-YYYY, such as 2027-2028.",
+    );
+    ensure(
+      Array.isArray(b.student_ids) &&
         b.student_ids.length > 0 &&
         b.student_ids.length <= 5000 &&
         b.student_ids.every(integer) &&
         new Set(b.student_ids).size === b.student_ids.length,
-      "Select academic year, billing month and students.",
+      "Choose the students to promote.",
     );
-    const components = await db.all(
-      "SELECT * FROM fee_components WHERE active=1 AND academic_year=? ORDER BY id",
-      b.academic_year,
-    );
-    const students = await db.all(
-        "SELECT * FROM students WHERE status='Active' ORDER BY id",
-      ),
-      existing = await db.all(
-        "SELECT student_id,category,description FROM demands WHERE category<>'Mess'",
-      );
-    const issued = new Set(
-      existing.map((d) =>
-        JSON.stringify([d.student_id, d.category, d.description]),
-      ),
-    );
-    const studentMap = new Map(students.map((s) => [s.id, s]));
-    const rows: Row[] = [];
-    for (const id of b.student_ids) {
-      const s = studentMap.get(id);
-      ensure(s, "Choose active students only.");
-      for (const c of components) {
-        if (
-          c.applicability !== "All" &&
-          c.applicability !== s.admission_type &&
-          c.applicability !== s.course
-        )
-          continue;
-        const description = `${b.academic_year} · ${c.name}`;
-        if (issued.has(JSON.stringify([id, c.category, description]))) continue;
-        rows.push({
-          student_id: id,
-          name: s.name,
-          category: c.category,
-          description,
-          amount: c.amount,
-          period: b.period,
-        });
+    const result = await db.transaction(async () => {
+      let total = 0;
+      for (const id of b.student_ids) {
+        const s = await db.get("SELECT * FROM students WHERE id=?", id);
+        ensure(s && s.status === "Active", "Choose active students only.");
+        ensure(
+          s.year < 3,
+          `${s.name} is already in Year ${s.year}, the final year.`,
+        );
+        ensure(
+          s.academic_year !== b.academic_year,
+          `${s.name} is already in ${b.academic_year}.`,
+          409,
+        );
+        await db.run(
+          "UPDATE students SET year=?,academic_year=?,admission_type='Existing' WHERE id=?",
+          s.year + 1,
+          b.academic_year,
+          id,
+        );
+        total += await chargeAdmission(
+          id,
+          "Existing",
+          b.academic_year,
+          me(res),
+        );
       }
-    }
-    return { rows, total: rows.reduce((sum, r) => sum + r.amount, 0) };
-  };
-  app.post("/api/admission/preview", async (req, res) => {
-    admin(res);
-    res.json(await admissionPreview(req.body));
-  });
-  app.post("/api/admission/finalize", async (req, res) => {
-    admin(res);
-    await db.transaction(async () => {
-      const p = await admissionPreview(req.body);
-      ensure(
-        p.rows.length,
-        "No new applicable charges. Existing demands are never issued twice.",
-      );
-      ensure(
-        JSON.stringify(p.rows) === JSON.stringify(req.body.expected_rows),
-        "Fees or students changed. Preview again.",
-        409,
-      );
-      await db.insertRows(
-        "demands",
-        [
-          "student_id",
-          "category",
-          "period",
-          "description",
-          "amount",
-          "finalized_by",
-          "created_at",
-        ],
-        p.rows.map((r) => [
-          r.student_id,
-          r.category,
-          r.period,
-          r.description,
-          r.amount,
-          me(res).id,
-          now(),
-        ]),
-      );
       await audit(
         me(res),
-        "Admission fees finalized",
-        `${req.body.academic_year} · ${p.rows.length} charges · ${p.total / 100} INR`,
+        "Students promoted",
+        `${b.student_ids.length} students to ${b.academic_year} · ${total / 100} INR admission fees`,
       );
+      return { promoted: b.student_ids.length, total };
     });
-    res.status(201).json({ ok: true });
+    res.json(result);
   });
   app.get("/api/accounts", async (_req, res) => {
     admin(res);

@@ -334,14 +334,20 @@ export function PasswordInput({
     </span>
   );
 }
-function Table({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) {
+function Table({
+  headers,
+  rows,
+}: {
+  headers: ReactNode[];
+  rows: ReactNode[][];
+}) {
   return (
     <div className="table-scroll">
       <table>
         <thead>
           <tr>
-            {headers.map((h) => (
-              <th key={h}>{h}</th>
+            {headers.map((h, i) => (
+              <th key={i}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -749,7 +755,7 @@ export function Operations({
   const tabs = [
     "Admissions",
     ...(isAdmin
-      ? ["Admission fees", "Imports", "Accounts", "Corrections", "Backups"]
+      ? ["Promote students", "Imports", "Accounts", "Corrections", "Backups"]
       : []),
     "Registers",
   ];
@@ -770,8 +776,8 @@ export function Operations({
         ))}
       </div>
       {tab === "Admissions" && <Admissions data={data} onSaved={onSaved} />}{" "}
-      {tab === "Admission fees" && (
-        <AdmissionFees data={data} onSaved={onSaved} />
+      {tab === "Promote students" && (
+        <Promotion data={data} onSaved={onSaved} />
       )}{" "}
       {tab === "Imports" && <Imports onSaved={onSaved} />}{" "}
       {tab === "Accounts" && <Accounts data={data} onSaved={onSaved} />}{" "}
@@ -981,7 +987,7 @@ export function Admissions({
             <>
               <Form
                 title="Assign room & approve"
-                description="One step: this adds the student to the register with this room."
+                description={`One step: this adds the student to the register with this room and puts the ${selected.admission_type.toLowerCase()} admission fees (${money(admissionTotal(data.settings, selected.admission_type))}) for ${selected.academic_year} in their dues.`}
                 fields={[
                   field("room", "Assigned room"),
                   {
@@ -1019,208 +1025,285 @@ export function Admissions({
     </>
   );
 }
-function AdmissionFees({
+// Admission fees by student type. Fresher Fund includes the refundable mess
+// caution deposit, shown as its own line so the difference is clear.
+const feeLines = (type: "fresher" | "existing") => [
+  { key: `fee_${type}_management`, label: "Management" },
+  { key: `fee_${type}_fund`, label: type === "fresher" ? "Hostel fund" : "Fund" },
+  ...(type === "fresher"
+    ? [{ key: "fee_fresher_caution", label: "Mess caution deposit" }]
+    : []),
+  { key: `fee_${type}_establishment`, label: "Establishment" },
+];
+export const admissionTotal = (
+  settings: Record<string, string>,
+  type: string,
+) =>
+  feeLines(type === "Fresher" ? "fresher" : "existing").reduce(
+    (sum, l) => sum + Number(settings[l.key] || 0),
+    0,
+  );
+export function FeeStructure({
   data,
   onSaved,
 }: {
   data: Workspace;
   onSaved: (m: string) => Promise<void>;
 }) {
-  const { rows, reload, error } = useRows("/components"),
-    [edit, setEdit] = useState<Row | null>(null),
-    [preview, setPreview] = useState<Row | null>(null),
-    [input, setInput] = useState<Row | null>(null);
-  const fees = [
-    "Admission fee",
-    "Depreciation",
-    "Application fee",
-    "Room rent",
-    "Utilities",
-    "Reading room",
-    "Caution deposit",
-    "Development fee",
-    "Establishment fee",
-    "Others",
-  ];
-  return (
-    <>
-      {error && <p className="notice danger">{error}</p>}
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <h2>Admission fee components</h2>
-            <p>
-              Amounts are set by your hostel; finalized charges never change
-              with these settings.
-            </p>
-          </div>
-          <button className="button" onClick={() => setEdit({})}>
-            Add component
-          </button>
-        </div>
-        <Table
-          headers={[
-            "Component",
-            "Category",
-            "Academic year",
-            "Applies to",
-            "Amount",
-            "Status",
-            "",
-          ]}
-          rows={rows.map((r) => [
-            r.name,
-            r.category,
-            r.academic_year,
-            r.applicability,
-            money(r.amount),
-            r.active ? "Active" : "Inactive",
-            <button
-              className="button secondary small"
-              onClick={() => setEdit(r)}
-            >
-              Edit
-            </button>,
-          ])}
+  const keys = [...feeLines("fresher"), ...feeLines("existing")].map(
+    (l) => l.key,
+  );
+  const [fees, setFees] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      keys.map((k) => [k, String(Number(data.settings[k] || 0) / 100)]),
+    ),
+  );
+  const [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const paise = (k: string) => Math.round(Number(fees[k] || 0) * 100);
+  const total = (type: "fresher" | "existing") =>
+    feeLines(type).reduce((sum, l) => sum + paise(l.key), 0);
+  const input = (key: string, label: string) => (
+    <label className="fee-line" key={key}>
+      <span>{label}</span>
+      <span className="fee-input">
+        ₹
+        <input
+          type="number"
+          min="0"
+          step="1"
+          max="1000000"
+          required
+          aria-label={label}
+          value={fees[key]}
+          onChange={(e) => setFees({ ...fees, [key]: e.target.value })}
         />
-      </section>
-      {edit && (
-        <Form
-          key={edit.id || "new"}
-          title={edit.id ? "Edit fee component" : "New fee component"}
-          fields={[
-            {
-              name: "category",
-              label: "Category",
-              options: choices(["Fund", "Management", "Establishment"]),
-              value: edit.category,
-            },
-            {
-              name: "name",
-              label: "Component",
-              options: choices(fees),
-              value: edit.name,
-            },
-            {
-              ...field(
-                "amount",
-                "Amount (₹)",
-                "number",
-                edit.amount ? edit.amount / 100 : undefined,
-              ),
-              min: 0.01,
-              step: "0.01",
-            },
-            field(
-              "academic_year",
-              "Academic year",
-              "text",
-              edit.academic_year || year(data.today),
-            ),
-            {
-              name: "applicability",
-              label: "Applies to",
-              options: choices(["All", "Fresher", "Existing", "B.E."]),
-              value: edit.applicability,
-            },
-            {
-              name: "active",
-              label: "Status",
-              options: [
-                { value: "1", label: "Active" },
-                { value: "0", label: "Inactive" },
-              ],
-              value: edit.active ?? 1,
-            },
-          ]}
-          onSubmit={async (v) => {
-            await api("/components", {
-              ...v,
-              id: edit.id,
-              amount: Math.round(Number(v.amount) * 100),
-              active: Number(v.active),
-            });
-            setEdit(null);
-            setPreview(null);
-            await reload();
-            await onSaved("Fee component saved.");
-          }}
-        >
-          <div className="notice">
-            Caution deposit always applies only to freshers. Management
-            application fees apply only to B.E. students.
-          </div>
-          <button
-            className="button secondary"
-            type="button"
-            onClick={() => setEdit(null)}
-          >
-            Cancel
-          </button>
-        </Form>
-      )}
-      <Form
-        title="Generate admission charges"
-        description="Preview charges for one student or all active students. Already-issued components are skipped."
-        fields={[
-          field("academic_year", "Academic year", "text", year(data.today)),
-          field("period", "Billing month", "month", data.today.slice(0, 7)),
-          {
-            name: "student",
-            label: "Student",
-            options: [
-              { value: "all", label: "All active students" },
-              ...data.students
-                .filter((s) => s.status === "Active")
-                .map((s) => ({
-                  value: String(s.id),
-                  label: `${s.name} · ${s.code}`,
-                })),
-            ],
-          },
-        ]}
-        submit="Preview admission fees"
-        onSubmit={async (v) => {
-          const b = {
-            academic_year: v.academic_year,
-            period: v.period,
-            student_ids:
-              v.student === "all"
-                ? data.students
-                    .filter((s) => s.status === "Active")
-                    .map((s) => s.id)
-                : [Number(v.student)],
-          };
-          setInput(b);
-          setPreview(await api("/admission/preview", b));
+      </span>
+    </label>
+  );
+  return (
+    <section className="panel fee-structure">
+      <div className="panel-heading">
+        <div>
+          <h2>Admission fee structure</h2>
+          <p>
+            Charged once per academic year. Freshers are charged when the Admin
+            approves their registration; existing students when they are
+            promoted to the next year. Dues already issued never change.
+          </p>
+        </div>
+      </div>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError("");
+          try {
+            await api(
+              "/fee-structure",
+              Object.fromEntries(keys.map((k) => [k, paise(k)])),
+            );
+            await onSaved("Fee structure saved. It applies to new dues only.");
+          } catch (err) {
+            setError(errorText(err));
+          } finally {
+            setBusy(false);
+          }
         }}
-      />
-      {preview && (
-        <Form
-          title={`Review ${preview.rows.length} charges · ${money(preview.total)}`}
-          fields={[]}
-          submit="Finalize admission fees"
-          onSubmit={async () => {
-            await api("/admission/finalize", {
-              ...input,
-              expected_rows: preview.rows,
-            });
-            setPreview(null);
-            await onSaved("Admission charges finalized.");
-          }}
-        >
-          <Table
-            headers={["Student", "Category", "Charge", "Amount"]}
-            rows={preview.rows.map((r: Row) => [
-              r.name,
-              r.category,
-              r.description,
-              money(r.amount),
-            ])}
+      >
+        <div className="fee-columns">
+          <div className="fee-card">
+            <h3>Fresher</h3>
+            <small>New students, on approval</small>
+            {input("fee_fresher_management", "Management")}
+            <div className="fee-group">
+              <strong className="fee-line">
+                <span>Fund</span>
+                <span>
+                  {money(paise("fee_fresher_fund") + paise("fee_fresher_caution"))}
+                </span>
+              </strong>
+              {input("fee_fresher_fund", "Hostel fund")}
+              {input("fee_fresher_caution", "Mess caution deposit")}
+            </div>
+            {input("fee_fresher_establishment", "Establishment")}
+            <div className="fee-line fee-total">
+              <span>Total</span>
+              <strong>{money(total("fresher"))}</strong>
+            </div>
+          </div>
+          <div className="fee-card">
+            <h3>Existing student</h3>
+            <small>Every promotion to the next year</small>
+            {input("fee_existing_management", "Management")}
+            {input("fee_existing_fund", "Fund")}
+            {input("fee_existing_establishment", "Establishment")}
+            <div className="fee-line fee-total">
+              <span>Total</span>
+              <strong>{money(total("existing"))}</strong>
+            </div>
+          </div>
+        </div>
+        <p className="notice">
+          Fresher Fund = Hostel fund {money(paise("fee_fresher_fund"))} + Mess
+          caution deposit {money(paise("fee_fresher_caution"))}. The caution
+          deposit is why a fresher’s Fund is{" "}
+          {money(
+            Math.abs(
+              paise("fee_fresher_fund") +
+                paise("fee_fresher_caution") -
+                paise("fee_existing_fund"),
+            ),
+          )}{" "}
+          {paise("fee_fresher_fund") + paise("fee_fresher_caution") >=
+          paise("fee_existing_fund")
+            ? "more"
+            : "less"}{" "}
+          than an existing student’s. Mess is billed monthly, separately.
+        </p>
+        {error && <p className="notice danger">{error}</p>}
+        <button className="button" disabled={busy}>
+          {busy ? "Saving…" : "Save fee structure"}
+        </button>
+      </form>
+    </section>
+  );
+}
+// Year-end promotion: Year 1 → 2 and 2 → 3, charging existing-student fees.
+function Promotion({
+  data,
+  onSaved,
+}: {
+  data: Workspace;
+  onSaved: (m: string) => Promise<void>;
+}) {
+  // Promotion starts the academic year after the current one.
+  const y = Number(year(data.today).slice(5));
+  const [academicYear, setAcademicYear] = useState(`${y}-${y + 1}`);
+  const eligible = data.students.filter(
+    (s) => s.status === "Active" && s.year < 3,
+  );
+  const ready = eligible.filter((s) => s.academic_year !== academicYear);
+  const [picked, setPicked] = useState<Set<number>>(
+    () => new Set(ready.map((s) => s.id)),
+  );
+  const chosen = ready.filter((s) => picked.has(s.id));
+  const fee = admissionTotal(data.settings, "Existing");
+  const [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const { ask, dialog } = useConfirm();
+  return (
+    <section className="panel">
+      {dialog}
+      <div className="panel-heading">
+        <div>
+          <h2>Promote students to the next year</h2>
+          <p>
+            At the end of the year, move Year 1 students to Year 2 and Year 2
+            to Year 3. Each promoted student gets the existing-student
+            admission fees ({money(fee)}) in their dues for the new academic
+            year.
+          </p>
+        </div>
+      </div>
+      <div className="table-toolbar">
+        <label>
+          New academic year{" "}
+          <input
+            value={academicYear}
+            onChange={(e) => setAcademicYear(e.target.value.trim())}
+            placeholder="2027-2028"
+            maxLength={9}
+            aria-label="New academic year"
           />
-        </Form>
-      )}
-    </>
+        </label>
+        <span>
+          {chosen.length} of {ready.length} selected
+        </span>
+      </div>
+      <Table
+        headers={[
+          <input
+            type="checkbox"
+            aria-label="Select all"
+            checked={!!ready.length && chosen.length === ready.length}
+            onChange={(e) =>
+              setPicked(
+                new Set(e.target.checked ? ready.map((s) => s.id) : []),
+              )
+            }
+          />,
+          "Student",
+          "Now",
+          "After promotion",
+        ]}
+        rows={eligible.map((s) => {
+          const done = s.academic_year === academicYear;
+          return [
+            <input
+              type="checkbox"
+              aria-label={`Promote ${s.name}`}
+              disabled={done}
+              checked={!done && picked.has(s.id)}
+              onChange={(e) => {
+                const next = new Set(picked);
+                if (e.target.checked) next.add(s.id);
+                else next.delete(s.id);
+                setPicked(next);
+              }}
+            />,
+            <>
+              <strong>{s.name}</strong>
+              <small>{s.code}</small>
+            </>,
+            `Year ${s.year} · ${s.academic_year || "—"}`,
+            done ? (
+              <span className="badge">Already in {academicYear}</span>
+            ) : (
+              `Year ${s.year + 1} · ${academicYear} · ${money(fee)} due`
+            ),
+          ];
+        })}
+      />
+      <p className="notice">
+        Year 3 students are in their final year and are not listed.
+      </p>
+      {error && <p className="notice danger">{error}</p>}
+      <button
+        className="button"
+        disabled={busy || !chosen.length}
+        onClick={async () => {
+          setError("");
+          if (
+            !(await ask({
+              title: `Promote ${chosen.length} student${chosen.length === 1 ? "" : "s"} to ${academicYear}?`,
+              body: `This adds ${money(fee * chosen.length)} in admission fees to their dues. It cannot be undone.`,
+              confirm: "Promote",
+            }))
+          )
+            return;
+          setBusy(true);
+          try {
+            const r = await api<{ promoted: number; total: number }>(
+              "/students/promote",
+              {
+                academic_year: academicYear,
+                student_ids: chosen.map((s) => s.id),
+              },
+            );
+            await onSaved(
+              `${r.promoted} students promoted. ${money(r.total)} added to their dues.`,
+            );
+          } catch (err) {
+            setError(errorText(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Promoting…" : `Promote ${chosen.length} students`}
+      </button>
+    </section>
   );
 }
 function Accounts({
@@ -1937,7 +2020,7 @@ function Registers({ data }: { data: Workspace }) {
             <h2>Outstanding fee register</h2>
           </div>
           <Table
-            headers={["Student", "Category", "Month", "Balance"]}
+            headers={["Student", "Category", "Period", "Balance"]}
             rows={report.outstanding.map((d: Row) => [
               `${d.name} · ${d.code}`,
               d.category,

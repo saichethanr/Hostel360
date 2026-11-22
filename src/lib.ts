@@ -156,8 +156,11 @@ export const shortMoney = (paise: number) =>
     : paise >= 100_000
       ? `₹${(paise / 100_000).toFixed(0)}k`
       : money(paise);
+// Mess dues are for a month (YYYY-MM); admission dues for an academic year.
 export const monthName = (period: string, short = false) =>
-  new Date(`${period}-01T12:00:00`).toLocaleDateString("en-IN", {
+  /^\d{4}-\d{4}$/.test(period)
+    ? `AY ${period}`
+    : new Date(`${period}-01T12:00:00`).toLocaleDateString("en-IN", {
     month: short ? "short" : "long",
     ...(short ? {} : { year: "numeric" }),
   });

@@ -486,7 +486,7 @@ test("student registration retains both identifiers and rejects duplicate roll n
   assert.equal(student.status, "Active");
 });
 
-test("admission review converts once; fresher and B.E. fees are applied independently and historical amounts stay fixed", async (t) => {
+test("approval and year promotion charge the admission fee structure once per academic year; issued dues stay fixed", async (t) => {
   const f = await fixture(t),
     admin = await f.login("Admin", 1),
     manager = await f.login("Manager", 2);
@@ -532,52 +532,94 @@ test("admission review converts once; fresher and B.E. fees are applied independ
     ).status,
     409,
   );
-  for (const c of [
-    { category: "Fund", name: "Caution deposit", amount: 50000 },
-    { category: "Management", name: "Application fee", amount: 12000 },
-    { category: "Establishment", name: "Establishment fee", amount: 73000 },
-  ])
-    assert.equal(
-      (
-        await f.request("/components", admin, {
-          ...c,
-          academic_year: "2025-2026",
-          applicability: "All",
-          active: 1,
-        })
-      ).status,
-      200,
-    );
-  const input = {
-    academic_year: "2025-2026",
-    period: "2025-02",
-    student_ids: [1, admitted.body.student_id],
+  const sid = admitted.body.student_id;
+  const admissionDues = async (period: string) =>
+    (await f.request("/workspace", admin)).body.demands
+      .filter((d: Row) => d.student_id === sid && d.period === period)
+      .map((d: Row) => [d.category, d.description, d.amount])
+      .sort();
+  // Existing students owe Management, Fund and Establishment, for the
+  // application's academic year rather than a month.
+  assert.deepEqual(await admissionDues("2025-2026"), [
+    ["Establishment", "Admission · Establishment fee", 840000],
+    ["Fund", "Admission · Hostel fund", 250000],
+    ["Management", "Admission · Management fee", 500000],
+  ]);
+  // Only the Admin edits the structure; new amounts apply to new dues only.
+  const fees = {
+    fee_fresher_management: 500000,
+    fee_fresher_fund: 250000,
+    fee_fresher_caution: 400000,
+    fee_fresher_establishment: 840000,
+    fee_existing_management: 600000,
+    fee_existing_fund: 300000,
+    fee_existing_establishment: 840000,
   };
-  const preview = await f.request("/admission/preview", admin, input);
-  assert.equal(preview.body.total, 208000); // fresher B.E.: 135000; existing B.Com: 73000
-  assert.equal(preview.body.rows.length, 4);
+  assert.equal((await f.request("/fee-structure", manager, fees)).status, 403);
   assert.equal(
-    (
-      await f.request("/admission/finalize", admin, {
-        ...input,
-        expected_rows: preview.body.rows,
-      })
-    ).status,
-    201,
+    (await f.request("/fee-structure", admin, { ...fees, fee_existing_fund: -1 }))
+      .status,
+    400,
+  );
+  assert.equal((await f.request("/fee-structure", admin, fees)).status, 200);
+  const promote = (body: Row) => f.request("/students/promote", admin, body);
+  assert.equal(
+    (await promote({ academic_year: "2026-2028", student_ids: [sid] })).status,
+    400,
+  );
+  const promoted = await promote({ academic_year: "2026-2027", student_ids: [sid] });
+  assert.equal(promoted.status, 200, JSON.stringify(promoted.body));
+  assert.deepEqual(promoted.body, { promoted: 1, total: 1740000 });
+  assert.deepEqual(await admissionDues("2026-2027"), [
+    ["Establishment", "Admission · Establishment fee", 840000],
+    ["Fund", "Admission · Hostel fund", 300000],
+    ["Management", "Admission · Management fee", 600000],
+  ]);
+  assert.equal((await admissionDues("2025-2026"))[1][2], 250000);
+  // The same academic year is never charged twice, and Year 3 is final.
+  assert.equal(
+    (await promote({ academic_year: "2026-2027", student_ids: [sid] })).status,
+    409,
   );
   assert.equal(
-    (
-      await f.request("/admission/preview", admin, {
-        ...input,
-        period: "2025-03",
-      })
-    ).body.rows.length,
-    0,
+    (await promote({ academic_year: "2027-2028", student_ids: [sid] })).status,
+    200,
+  );
+  assert.equal(
+    (await promote({ academic_year: "2028-2029", student_ids: [sid] })).status,
+    400,
+  );
+  // A fresher's approval adds the mess caution deposit under Fund.
+  const fresher = await f.request("/applications", manager, {
+    ...a,
+    email: "fresh@test.local",
+    admission_type: "Fresher",
+  });
+  const freshId = (
+    await f.request(`/applications/${fresher.body.id}/review`, admin, {
+      status: "Approved",
+      room: "B-103",
+      joined: "2025-01-29",
+    })
+  ).body.student_id;
+  const fresh = (await f.request("/workspace", admin)).body.demands.filter(
+    (d: Row) => d.student_id === freshId,
+  );
+  assert.deepEqual(
+    fresh.map((d: Row) => [d.description, d.amount]).sort(),
+    [
+      ["Admission · Establishment fee", 840000],
+      ["Admission · Hostel fund", 250000],
+      ["Admission · Management fee", 500000],
+      ["Admission · Mess caution deposit", 400000],
+    ],
   );
   const w = (await f.request("/workspace", admin)).body;
   const s = w.students.find((s: Student) => s.id === admitted.body.student_id);
   assert.equal(s.course, "B.Com");
   assert.equal(s.address, "Test address");
+  assert.equal(s.year, 3);
+  assert.equal(s.academic_year, "2027-2028");
 });
 
 test("reversal reopens allocations without changing receipt snapshots; adjustment cannot undercut collections", async (t) => {

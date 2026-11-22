@@ -468,40 +468,26 @@ test(
           });
           assert.equal(s.status, 201, JSON.stringify(s.body));
           assert(s.body.id > 500);
+          // Only a Fund line, so the payment below settles a single due.
           assert.equal(
             (
-              await request("/components", c.code, c.cookie, {
-                category: "Fund",
-                name: "Annual fund",
-                amount,
-                academic_year: "2025-2026",
-                applicability: "All",
-                active: 1,
+              await request("/fee-structure", c.code, c.cookie, {
+                fee_fresher_management: 0,
+                fee_fresher_fund: 0,
+                fee_fresher_caution: 0,
+                fee_fresher_establishment: 0,
+                fee_existing_management: 0,
+                fee_existing_fund: amount,
+                fee_existing_establishment: 0,
               })
             ).status,
             200,
           );
-          const input = {
-            academic_year: "2025-2026",
-            period: "2025-01",
+          const promoted = await request("/students/promote", c.code, c.cookie, {
+            academic_year: "2026-2027",
             student_ids: [s.body.id],
-          };
-          const preview = await request(
-            "/admission/preview",
-            c.code,
-            c.cookie,
-            input,
-          );
-          assert.equal(preview.body.total, amount);
-          assert.equal(
-            (
-              await request("/admission/finalize", c.code, c.cookie, {
-                ...input,
-                expected_rows: preview.body.rows,
-              })
-            ).status,
-            201,
-          );
+          });
+          assert.deepEqual(promoted.body, { promoted: 1, total: amount });
           const demand = (await request("/workspace", c.code, c.cookie)).body
             .demands[0];
           const payment = {
