@@ -399,10 +399,6 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
     <div className="setup-page community-page">
       <div className="eyebrow">{HOSTEL.short} HOSTEL</div>
       <h1>{HOSTEL.name}</h1>
-      <p>
-        Sign in to the hostel, or register as a Student or Manager. The Admin
-        approves every new account.
-      </p>
       <div className="tabs" aria-label="Hostel access">
         {["Sign in", "Register"].map((label) => (
           <button
