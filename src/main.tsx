@@ -70,9 +70,12 @@ import {
   CommunityGate,
   PasswordInput,
   useSignOutConfirm,
+  useConfirm,
+  ThemeToggle,
   MembershipStatus,
 } from "./operations";
 import "./styles.css";
+import "./dark.css";
 
 type Page =
   | "Dashboard"
@@ -640,6 +643,7 @@ function App() {
               </span>
             )}
             <div className="topbar-divider" />
+            <ThemeToggle />
             <button
               className="icon-button"
               aria-label="Open quick guide"
@@ -735,9 +739,7 @@ function App() {
             <span>
               <span className="live-dot" /> All in one place. All accounted for.
             </span>
-            <span>
-              {HOSTEL.name}
-            </span>
+            <span>{HOSTEL.name}</span>
           </footer>
         </main>
       </div>
@@ -1303,7 +1305,7 @@ function CollectionChart({
               x2="656"
               y1={13 + n * 49}
               y2={13 + n * 49}
-              stroke="#edf0ed"
+              style={{ stroke: "var(--chart-grid)" }}
               strokeDasharray="4 4"
             />
           </g>
@@ -1316,7 +1318,7 @@ function CollectionChart({
               width="24"
               height={Math.max(0, (amounts[i].demand / max) * 147)}
               rx="4"
-              fill="#dcebc9"
+              style={{ fill: "var(--chart-demand)" }}
             >
               <title>
                 {monthName(m)} demand: {money(amounts[i].demand)}
@@ -1328,7 +1330,7 @@ function CollectionChart({
               width="24"
               height={Math.max(0, (amounts[i].collection / max) * 147)}
               rx="4"
-              fill="#346e55"
+              style={{ fill: "var(--chart-collected)" }}
             >
               <title>
                 {monthName(m)} collected: {money(amounts[i].collection)}
@@ -1685,6 +1687,7 @@ function AttendancePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const confirm = useConfirm();
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -1740,6 +1743,7 @@ function AttendancePage({
   };
   return (
     <>
+      {confirm.dialog}
       <div className="notice">
         <ClipboardCheck size={17} />
         <span>
@@ -1765,12 +1769,18 @@ function AttendancePage({
               value={date}
               max={data.today}
               disabled={busy}
-              onChange={(e) => {
+              onChange={async (e) => {
+                const next = e.target.value || data.today;
                 if (
                   !dirty ||
-                  window.confirm("Discard unsaved attendance changes?")
+                  (await confirm.ask({
+                    title: "Discard unsaved attendance changes?",
+                    body: "The marks you changed for this date are not saved yet.",
+                    confirm: "Discard changes",
+                    danger: true,
+                  }))
                 )
-                  setDate(e.target.value || data.today);
+                  setDate(next);
               }}
             />
             <Button
@@ -2804,7 +2814,9 @@ function ReceiptModal({
           </div>
           <div>
             <h2>{r.hostel}</h2>
-            <p>{HOSTEL.short} · {r.category} payment receipt</p>
+            <p>
+              {HOSTEL.short} · {r.category} payment receipt
+            </p>
           </div>
           <Badge
             tone={r.reversed_at || r.refunded_amount > 0 ? "amber" : "green"}

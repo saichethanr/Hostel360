@@ -1,0 +1,661 @@
+/* Dark theme. Generated from styles.css by mapping light surfaces to dark
+   ones and dark text to light; dark surfaces such as the sidebar, primary
+   buttons and the sign-in banner keep their colours. Hand-tuned rules follow
+   at the end. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-theme="dark"] {
+  color: hsl(156 21% 83%);
+  background: hsl(80 12% 13%);
+}
+:where(:root[data-theme="dark"]) input,
+:where(:root[data-theme="dark"]) select {
+  border: 1px solid hsl(100 9% 24%);
+  color: hsl(145 12% 77%);
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) input:focus,
+:where(:root[data-theme="dark"]) select:focus {
+  border-color: hsl(140 12% 35%);
+}
+:where(:root[data-theme="dark"]) .button.secondary {
+  background: hsl(0 0% 11%);
+  color: hsl(120 8% 74%);
+  border-color: hsl(93 9% 24%);
+}
+:where(:root[data-theme="dark"]) .button.secondary:hover:not(:disabled) {
+  background: hsl(86 20% 14%);
+}
+:where(:root[data-theme="dark"]) .icon-button {
+  color: hsl(135 5% 65%);
+}
+:where(:root[data-theme="dark"]) .icon-button:hover {
+  background: hsl(90 19% 15%);
+}
+:where(:root[data-theme="dark"]) .text-button {
+  color: hsl(144 28% 75%);
+}
+:where(:root[data-theme="dark"]) .text-button:hover {
+  color: hsl(143 44% 84%);
+}
+:where(:root[data-theme="dark"]) .workspace-switch {
+  border: 1px solid hsl(0 0% 20% / 0.09);
+}
+:where(:root[data-theme="dark"]) .workspace-status {
+  background: hsl(92 24% 25%);
+}
+:where(:root[data-theme="dark"]) .nav-label {
+  color: hsl(145 15% 62%);
+}
+:where(:root[data-theme="dark"]) .nav-item.active {
+  color: hsl(148 44% 84%);
+  background: hsl(88 24% 22%);
+}
+:where(:root[data-theme="dark"]) .nav-item.active svg {
+  color: hsl(141 35% 80%);
+}
+:where(:root[data-theme="dark"]) .nav-item.active .nav-count {
+  color: hsl(141 35% 80%);
+}
+:where(:root[data-theme="dark"]) .help-card {
+  border: 1px solid hsl(0 0% 20% / 0.063);
+}
+:where(:root[data-theme="dark"]) .user-card {
+  border-top: 1px solid hsl(0 0% 20% / 0.075);
+}
+:where(:root[data-theme="dark"]) .user-card > svg {
+  color: hsl(134 14% 61%);
+}
+:where(:root[data-theme="dark"]) .user-card .avatar {
+  background: hsl(84 23% 19%);
+  color: hsl(106 18% 75%);
+}
+:where(:root[data-theme="dark"]) .avatar {
+  background: hsl(77 20% 16%);
+  color: hsl(91 12% 71%);
+}
+:where(:root[data-theme="dark"]) .avatar-1 {
+  background: hsl(26 24% 15%);
+  color: hsl(23 28% 63%);
+}
+:where(:root[data-theme="dark"]) .avatar-2 {
+  background: hsl(235 23% 15%);
+  color: hsl(257 18% 63%);
+}
+:where(:root[data-theme="dark"]) .avatar-3 {
+  background: hsl(176 21% 16%);
+  color: hsl(173 16% 68%);
+}
+:where(:root[data-theme="dark"]) .avatar-4 {
+  background: hsl(351 24% 15%);
+  color: hsl(348 25% 63%);
+}
+:where(:root[data-theme="dark"]) .topbar {
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .breadcrumb {
+  color: hsl(127 4% 62%);
+}
+:where(:root[data-theme="dark"]) .breadcrumb strong {
+  color: hsl(134 10% 75%);
+}
+:where(:root[data-theme="dark"]) .demo-label {
+  color: hsl(92 12% 68%);
+  background: hsl(75 23% 14%);
+  border: 1px solid hsl(81 17% 23%);
+}
+:where(:root[data-theme="dark"]) .topbar-right .avatar {
+  background: hsl(40 24% 17%);
+  color: hsl(41 18% 69%);
+}
+:where(:root[data-theme="dark"]) .eyebrow {
+  color: hsl(92 8% 64%);
+}
+:where(:root[data-theme="dark"]) .welcome-dot {
+  color: hsl(92 37% 67%);
+}
+:where(:root[data-theme="dark"]) .date-chip {
+  border: 1px solid hsl(90 10% 24%);
+  background: hsl(0 0% 11%);
+  color: hsl(96 7% 70%);
+}
+:where(:root[data-theme="dark"]) .date-chip svg {
+  color: hsl(97 9% 64%);
+}
+:where(:root[data-theme="dark"]) .overview-banner {
+  background: hsl(81 24% 16%);
+  border: 1px solid hsl(82 18% 25%);
+}
+:where(:root[data-theme="dark"]) .banner-icon {
+  border: 1px solid hsl(84 18% 26%);
+  background: hsl(71 24% 14%);
+  color: hsl(87 21% 69%);
+}
+:where(:root[data-theme="dark"]) .overview-banner strong {
+  color: hsl(101 20% 76%);
+}
+:where(:root[data-theme="dark"]) .overview-banner div > span {
+  color: hsl(88 10% 67%);
+}
+:where(:root[data-theme="dark"]) .banner-tag {
+  color: hsl(88 10% 66%);
+}
+:where(:root[data-theme="dark"]) .banner-tag > span {
+  background: hsl(83 16% 34%);
+}
+:where(:root[data-theme="dark"]) .banner-decoration i {
+  border: 1px solid hsl(81 16% 28%);
+}
+:where(:root[data-theme="dark"]) .metric {
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .metric-top {
+  color: hsl(108 6% 67%);
+}
+:where(:root[data-theme="dark"]) .metric-icon {
+  background: hsl(80 22% 14%);
+  color: hsl(90 15% 66%);
+}
+:where(:root[data-theme="dark"]) .metric > strong {
+  color: hsl(136 19% 80%);
+}
+:where(:root[data-theme="dark"]) .metric-note {
+  color: hsl(97 6% 61%);
+}
+:where(:root[data-theme="dark"]) .positive {
+  color: hsl(107 24% 70%);
+}
+:where(:root[data-theme="dark"]) .subtle-pill {
+  background: hsl(82 17% 14%);
+  color: hsl(89 11% 66%);
+}
+:where(:root[data-theme="dark"]) .metric.mint {
+  background: hsl(82 24% 13%);
+  border-color: hsl(90 18% 24%);
+}
+:where(:root[data-theme="dark"]) .metric.mint .metric-icon {
+  background: hsl(85 24% 16%);
+  color: hsl(95 18% 66%);
+}
+:where(:root[data-theme="dark"]) .metric.peach {
+  background: hsl(35 24% 12%);
+  border-color: hsl(37 18% 23%);
+}
+:where(:root[data-theme="dark"]) .metric.peach .metric-icon {
+  background: hsl(37 24% 15%);
+  color: hsl(37 41% 61%);
+}
+:where(:root[data-theme="dark"]) .amber-text {
+  color: hsl(34 43% 65%);
+}
+:where(:root[data-theme="dark"]) .panel {
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .panel-heading p {
+  color: hsl(98 5% 61%);
+}
+:where(:root[data-theme="dark"]) .panel-heading select {
+  background: hsl(75 24% 12%);
+}
+:where(:root[data-theme="dark"]) .chart-legend {
+  color: hsl(95 7% 65%);
+}
+:where(:root[data-theme="dark"]) .demand-key {
+  background: hsl(86 24% 19%);
+}
+:where(:root[data-theme="dark"]) .axis-label {
+  fill: hsl(94 5% 35%);
+}
+:where(:root[data-theme="dark"]) .chart-foot {
+  background: hsl(80 24% 12%);
+  color: hsl(92 11% 63%);
+  border-top: 1px solid hsl(80 11% 22%);
+}
+:where(:root[data-theme="dark"]) .chart-empty {
+  color: hsl(95 7% 66%);
+}
+:where(:root[data-theme="dark"]) .number-badge {
+  background: hsl(40 24% 15%);
+  color: hsl(38 37% 66%);
+}
+:where(:root[data-theme="dark"]) .attention-item + .attention-item {
+  border-top: 1px solid hsl(77 13% 22%);
+}
+:where(:root[data-theme="dark"]) .attention-item:hover {
+  background: hsl(72 24% 12%);
+}
+:where(:root[data-theme="dark"]) .attention-icon.orange {
+  background: hsl(36 24% 15%);
+  color: hsl(36 40% 62%);
+}
+:where(:root[data-theme="dark"]) .attention-icon.purple {
+  background: hsl(270 24% 14%);
+}
+:where(:root[data-theme="dark"]) .attention-item strong {
+  color: hsl(96 12% 76%);
+}
+:where(:root[data-theme="dark"]) .attention-item p {
+  color: hsl(88 7% 62%);
+}
+:where(:root[data-theme="dark"]) .attention-item div > span {
+  color: hsl(92 25% 68%);
+}
+:where(:root[data-theme="dark"]) .attention-bottom {
+  color: hsl(88 12% 63%);
+  border-top: 1px solid hsl(73 15% 22%);
+}
+:where(:root[data-theme="dark"]) th {
+  background: hsl(75 20% 13%);
+  border-block: 1px solid hsl(80 11% 22%);
+  color: hsl(90 7% 62%);
+}
+:where(:root[data-theme="dark"]) td {
+  border-bottom: 1px solid hsl(84 10% 22%);
+  color: hsl(95 8% 70%);
+}
+:where(:root[data-theme="dark"]) tbody tr:hover {
+  background: hsl(75 24% 12%);
+}
+:where(:root[data-theme="dark"]) td strong {
+  color: hsl(95 14% 76%);
+}
+:where(:root[data-theme="dark"]) button.student-cell:hover strong {
+  color: hsl(147 38% 79%);
+}
+:where(:root[data-theme="dark"]) .amount {
+  color: hsl(106 17% 79%);
+}
+:where(:root[data-theme="dark"]) .amount.amber-text {
+  color: hsl(37 40% 66%);
+}
+:where(:root[data-theme="dark"]) .mode-pill {
+  border: 1px solid hsl(46 18% 24%);
+  color: hsl(47 25% 65%);
+  background: hsl(51 24% 13%);
+}
+:where(:root[data-theme="dark"]) .mode-pill.upi {
+  background: hsl(256 24% 13%);
+  border-color: hsl(260 18% 23%);
+}
+:where(:root[data-theme="dark"]) .mode-pill.bank {
+  background: hsl(202 24% 14%);
+  border-color: hsl(203 18% 23%);
+  color: hsl(205 24% 61%);
+}
+:where(:root[data-theme="dark"]) .table-foot {
+  border-top: 1px solid hsl(78 17% 22%);
+  color: hsl(90 10% 61%);
+}
+:where(:root[data-theme="dark"]) .small-icon {
+  background: hsl(80 24% 14%);
+  color: hsl(91 20% 66%);
+}
+:where(:root[data-theme="dark"]) .donut {
+  background: conic-gradient(
+    #65916b 0 var(--present),
+    hsl(35 24% 26%) var(--present) var(--marked),
+    hsl(273 18% 27%) var(--marked) var(--leave),
+    hsl(72 17% 15%) var(--leave) 100%
+  );
+}
+:where(:root[data-theme="dark"]) .donut > div {
+  border: 5px solid hsl(0 0% 20%);
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .donut strong {
+  color: hsl(107 19% 77%);
+}
+:where(:root[data-theme="dark"]) .donut span {
+  color: hsl(83 10% 60%);
+}
+:where(:root[data-theme="dark"]) .attendance-legend > div {
+  color: hsl(91 9% 63%);
+}
+:where(:root[data-theme="dark"]) .attendance-legend strong {
+  color: hsl(93 15% 73%);
+}
+:where(:root[data-theme="dark"]) .attendance-legend i.orange {
+  background: hsl(35 24% 26%);
+}
+:where(:root[data-theme="dark"]) .attendance-legend i.purple {
+  background: hsl(273 18% 27%);
+}
+:where(:root[data-theme="dark"]) .attendance-legend i.grey {
+  background: hsl(79 15% 19%);
+}
+:where(:root[data-theme="dark"]) .card-bottom-button {
+  border-top: 1px solid hsl(78 17% 22%);
+  background: hsl(75 24% 12%);
+  color: hsl(95 16% 66%);
+}
+:where(:root[data-theme="dark"]) .card-bottom-button:hover {
+  background: hsl(80 24% 14%);
+}
+:where(:root[data-theme="dark"]) .quick-actions {
+  border: 1px dashed hsl(88 14% 24%);
+  background: hsl(75 23% 12%);
+}
+:where(:root[data-theme="dark"]) .quick-actions > span {
+  color: hsl(81 10% 61%);
+}
+:where(:root[data-theme="dark"]) .quick-actions button {
+  color: hsl(87 13% 67%);
+}
+:where(:root[data-theme="dark"]) .quick-actions button:hover {
+  color: hsl(148 37% 80%);
+}
+:where(:root[data-theme="dark"]) .page-footer .live-dot {
+  background: hsl(88 14% 33%);
+}
+:where(:root[data-theme="dark"]) .badge {
+  background: hsl(97 24% 15%);
+  color: hsl(98 22% 68%);
+}
+:where(:root[data-theme="dark"]) .badge.amber {
+  background: hsl(38 24% 15%);
+  color: hsl(37 39% 65%);
+}
+:where(:root[data-theme="dark"]) .badge.grey {
+  background: hsl(75 9% 14%);
+  color: hsl(90 8% 63%);
+}
+:where(:root[data-theme="dark"]) .inline-count {
+  background: hsl(87 22% 15%);
+  color: hsl(86 15% 66%);
+}
+:where(:root[data-theme="dark"]) .table-toolbar {
+  border-top: 1px solid hsl(77 13% 22%);
+}
+:where(:root[data-theme="dark"]) .search-box {
+  border: 1px solid hsl(87 10% 24%);
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .room-tag {
+  background: hsl(80 18% 14%);
+  border: 1px solid hsl(82 14% 23%);
+}
+:where(:root[data-theme="dark"]) .tabs {
+  background: hsl(77 18% 14%);
+}
+:where(:root[data-theme="dark"]) .tabs button {
+  color: hsl(87 9% 63%);
+}
+:where(:root[data-theme="dark"]) .tabs button:hover {
+  color: hsl(97 28% 75%);
+}
+:where(:root[data-theme="dark"]) .tabs button.active {
+  background: hsl(0 0% 11%);
+  color: hsl(99 27% 75%);
+}
+:where(:root[data-theme="dark"]) .notice {
+  background: hsl(87 23% 14%);
+  color: hsl(89 15% 67%);
+  border: 1px solid hsl(87 18% 24%);
+}
+:where(:root[data-theme="dark"]) .notice.warning {
+  background: hsl(40 24% 13%);
+  color: hsl(39 37% 67%);
+  border-color: hsl(40 18% 24%);
+}
+:where(:root[data-theme="dark"]) .notice.danger {
+  color: hsl(6 42% 68%);
+  background: hsl(11 24% 13%);
+  border-color: hsl(9 18% 24%);
+}
+:where(:root[data-theme="dark"]) .notice.success {
+  color: hsl(128 28% 72%);
+  background: hsl(110 24% 14%);
+}
+:where(:root[data-theme="dark"]) .attendance-toggle button {
+  border: 1px solid hsl(83 10% 23%);
+  color: hsl(87 9% 63%);
+}
+:where(:root[data-theme="dark"])
+  .attendance-toggle
+  button:hover:not(:disabled) {
+  background: hsl(76 24% 14%);
+}
+:where(:root[data-theme="dark"]) .attendance-toggle button.selected.present {
+  background: hsl(90 24% 15%);
+  color: hsl(93 28% 71%);
+  border-color: hsl(89 18% 27%);
+}
+:where(:root[data-theme="dark"]) .attendance-toggle button.selected.absent {
+  background: hsl(27 24% 14%);
+  color: hsl(34 35% 63%);
+  border-color: hsl(33 18% 26%);
+}
+:where(:root[data-theme="dark"]) .attendance-toggle button.selected.leave {
+  background: hsl(267 24% 14%);
+  color: hsl(271 21% 60%);
+  border-color: hsl(270 18% 24%);
+}
+:where(:root[data-theme="dark"]) .receipt-link {
+  color: hsl(94 24% 70%);
+}
+:where(:root[data-theme="dark"]) .modal {
+  border: 1px solid hsl(86 14% 24%);
+  color: hsl(106 18% 78%);
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .modal-header {
+  border-bottom: 1px solid hsl(78 15% 23%);
+  background: hsl(75 24% 12%);
+}
+:where(:root[data-theme="dark"]) .modal-header p {
+  color: hsl(90 10% 62%);
+}
+:where(:root[data-theme="dark"]) .modal-actions {
+  border-top: 1px solid hsl(78 15% 23%);
+}
+:where(:root[data-theme="dark"]) .field > span {
+  color: hsl(89 15% 70%);
+}
+:where(:root[data-theme="dark"]) .empty h3 {
+  color: hsl(92 16% 69%);
+}
+:where(:root[data-theme="dark"]) .empty p {
+  color: hsl(85 9% 60%);
+}
+:where(:root[data-theme="dark"]) .profile-top,
+:where(:root[data-theme="dark"]) .payment-review-person {
+  border-bottom: 1px solid hsl(80 15% 22%);
+}
+:where(:root[data-theme="dark"]) .detail-grid small {
+  color: hsl(87 13% 63%);
+}
+:where(:root[data-theme="dark"]) .detail-grid strong {
+  color: hsl(90 17% 73%);
+}
+:where(:root[data-theme="dark"]) .payment-total {
+  background: hsl(83 24% 15%);
+  border: 1px solid hsl(85 18% 25%);
+}
+:where(:root[data-theme="dark"]) .payment-total small {
+  color: hsl(87 15% 63%);
+}
+:where(:root[data-theme="dark"]) .review-allocations {
+  border-block: 1px solid hsl(76 16% 23%);
+}
+:where(:root[data-theme="dark"]) .review-allocations > div {
+  color: hsl(86 13% 67%);
+}
+:where(:root[data-theme="dark"]) .review-allocations strong {
+  color: hsl(94 24% 74%);
+}
+:where(:root[data-theme="dark"]) .confirm-check {
+  color: hsl(90 19% 69%);
+}
+:where(:root[data-theme="dark"]) .receipt-brand p {
+  color: hsl(91 14% 63%);
+}
+:where(:root[data-theme="dark"]) .receipt-demo {
+  color: hsl(41 30% 66%);
+  background: hsl(46 24% 14%);
+}
+:where(:root[data-theme="dark"]) .receipt-meta span {
+  color: hsl(88 15% 64%);
+}
+:where(:root[data-theme="dark"]) .receipt-total {
+  background: hsl(83 24% 15%);
+}
+:where(:root[data-theme="dark"]) .receipt-signature p {
+  color: hsl(88 13% 61%);
+}
+:where(:root[data-theme="dark"]) .receipt-signature > div {
+  border-top: 1px solid hsl(85 17% 25%);
+  color: hsl(88 16% 63%);
+}
+:where(:root[data-theme="dark"]) .receipt-actions {
+  background: hsl(80 24% 12%);
+}
+:where(:root[data-theme="dark"]) .receipt-actions > span {
+  color: hsl(86 14% 63%);
+}
+:where(:root[data-theme="dark"]) .guide-step p {
+  color: hsl(88 13% 62%);
+}
+:where(:root[data-theme="dark"]) .policy-row {
+  border-top: 1px solid hsl(77 13% 22%);
+}
+:where(:root[data-theme="dark"]) .policy-row strong {
+  color: hsl(89 19% 70%);
+}
+:where(:root[data-theme="dark"]) .progress-cell {
+  color: hsl(87 15% 63%);
+}
+:where(:root[data-theme="dark"]) .progress-cell > div {
+  background: hsl(80 21% 15%);
+}
+:where(:root[data-theme="dark"]) .progress-cell span {
+  background: hsl(89 18% 36%);
+}
+:where(:root[data-theme="dark"]) .audit-item {
+  border-top: 1px solid hsl(80 18% 23%);
+}
+:where(:root[data-theme="dark"]) .audit-icon {
+  background: hsl(86 24% 15%);
+  color: hsl(93 26% 66%);
+}
+:where(:root[data-theme="dark"]) .audit-item p {
+  color: hsl(87 16% 62%);
+}
+:where(:root[data-theme="dark"]) .loading-screen {
+  color: hsl(93 22% 69%);
+}
+:where(:root[data-theme="dark"]) .loader {
+  background: linear-gradient(90deg, hsl(87 21% 18%), #7f9c65, hsl(87 21% 18%));
+}
+:where(:root[data-theme="dark"]) .eyebrow.light > span {
+  background: hsl(84 24% 25%);
+}
+:where(:root[data-theme="dark"]) .windows > i {
+  background: hsl(78 24% 31%);
+}
+:where(:root[data-theme="dark"]) .illustration-sun {
+  background: hsl(79 24% 33%);
+}
+:where(:root[data-theme="dark"]) .login-form-section {
+  background: hsl(75 23% 12%);
+}
+:where(:root[data-theme="dark"]) .login-top {
+  color: hsl(84 17% 62%);
+}
+:where(:root[data-theme="dark"]) .login-card > .small-icon {
+  background: hsl(81 24% 16%);
+  border: 1px solid hsl(84 18% 25%);
+  color: hsl(88 19% 66%);
+}
+:where(:root[data-theme="dark"]) .login-card > p {
+  color: hsl(89 12% 61%);
+}
+:where(:root[data-theme="dark"]) .login-card input {
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .divider-label::before,
+:where(:root[data-theme="dark"]) .divider-label::after {
+  background: hsl(83 18% 16%);
+}
+@media print {
+  :where(:root[data-theme="dark"]) body {
+    background: hsl(0 0% 11%);
+  }
+}
+:where(:root[data-theme="dark"]) .field textarea {
+  border: 1px solid hsl(96 9% 25%);
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) .student-tools details {
+  border: 1px solid hsl(87 10% 24%);
+}
+:where(:root[data-theme="dark"]) label.button:focus-within {
+  outline: 3px solid hsl(95 18% 35%);
+}
+:where(:root[data-theme="dark"]) .community-choice {
+  border: 1px solid hsl(105 8% 24%);
+  background: hsl(0 0% 11%);
+}
+:where(:root[data-theme="dark"]) button.community-choice:hover,
+:where(:root[data-theme="dark"]) button.community-choice:focus-visible {
+  background: hsl(110 19% 13%);
+}
+:where(:root[data-theme="dark"]) .community-choice small,
+:where(:root[data-theme="dark"]) .community-empty {
+  color: hsl(140 7% 68%);
+}
+:where(:root[data-theme="dark"]) .community-choice.selected {
+  background: hsl(110 19% 13%);
+}
+:where(:root[data-theme="dark"]) .community-id {
+  color: hsl(151 38% 80%);
+}
+:where(:root[data-theme="dark"]) .password-toggle {
+  color: hsl(150 33% 78%);
+}
+:where(:root[data-theme="dark"]) .password-toggle:hover,
+:where(:root[data-theme="dark"]) .password-toggle:focus-visible {
+  background: hsl(120 15% 14%);
+}
+:where(:root[data-theme="dark"]) .id-status.good {
+  color: hsl(142 44% 75%);
+}
+:where(:root[data-theme="dark"]) .id-status.bad {
+  color: hsl(4 50% 71%);
+}
+:where(:root[data-theme="dark"]) .status-pill.waiting {
+  background: hsl(35 24% 14%);
+  color: hsl(35 50% 76%);
+}
+:where(:root[data-theme="dark"]) .status-pill.done {
+  background: hsl(120 15% 14%);
+  color: hsl(150 33% 78%);
+}
+:where(:root[data-theme="dark"]) .join-details {
+  border: 1px solid hsl(105 8% 24%);
+}
+:where(:root[data-theme="dark"]) .join-details > p {
+  color: hsl(140 7% 68%);
+}
+:where(:root[data-theme="dark"]) .confirm-modal p {
+  color: hsl(140 7% 68%);
+}
+:root[data-theme="dark"] .confirm-modal p {
+  color: hsl(140 7% 68%);
+}
+
+/* Hand-tuned */
+:root[data-theme="dark"] {
+  --muted: #9aa69f;
+  --line: #2b3530;
+  --chart-grid: #2b3530;
+  --chart-demand: #3c5a3a;
+  --chart-collected: #7fc29a;
+}
+:root[data-theme="dark"] .text-button,
+:root[data-theme="dark"] .icon-button:hover {
+  color: #9fd3b0;
+}
+:root[data-theme="dark"] .chart-empty {
+  background: hsl(0 0% 11% / 0.88);
+}

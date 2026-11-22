@@ -5,6 +5,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { Moon, Sun } from "lucide-react";
 import {
   api,
   apiUrl,
@@ -95,6 +96,86 @@ export function useSignOutConfirm(action: () => Promise<void> | void) {
     </dialog>
   ) : null;
   return { dialog, ask: () => setOpen(true) };
+}
+// Light/dark switch; the choice is remembered on this device.
+export function ThemeToggle() {
+  const [dark, setDark] = useState(
+    document.documentElement.dataset.theme === "dark",
+  );
+  const label = dark ? "Switch to light mode" : "Switch to dark mode";
+  return (
+    <button
+      className="icon-button theme-toggle"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        const next = dark ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        try {
+          localStorage.setItem("h360_theme", next);
+        } catch {}
+        setDark(!dark);
+      }}
+    >
+      {dark ? <Sun size={19} /> : <Moon size={19} />}
+    </button>
+  );
+}
+// In-app confirmation pop-up; `ask` resolves true when confirmed.
+type ConfirmRequest = {
+  title: string;
+  body?: ReactNode;
+  confirm: string;
+  danger?: boolean;
+};
+export function useConfirm() {
+  const [request, setRequest] = useState<
+    (ConfirmRequest & { resolve: (ok: boolean) => void }) | null
+  >(null);
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (request && dialog && !dialog.open) dialog.showModal();
+  }, [request]);
+  const close = (ok: boolean) => {
+    request?.resolve(ok);
+    setRequest(null);
+  };
+  const dialog = request ? (
+    <dialog
+      ref={ref}
+      className="modal confirm-modal"
+      aria-labelledby="confirm-title"
+      onCancel={(e) => {
+        e.preventDefault();
+        close(false);
+      }}
+      onClick={(e) => e.target === e.currentTarget && close(false)}
+    >
+      <div className="modal-body">
+        <h2 id="confirm-title">{request.title}</h2>
+        {request.body && <p>{request.body}</p>}
+        <div className="modal-actions">
+          <button
+            className="button secondary"
+            autoFocus
+            onClick={() => close(false)}
+          >
+            Cancel
+          </button>
+          <button
+            className={request.danger ? "button danger" : "button"}
+            onClick={() => close(true)}
+          >
+            {request.confirm}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  ) : null;
+  const ask = (options: ConfirmRequest) =>
+    new Promise<boolean>((resolve) => setRequest({ ...options, resolve }));
+  return { ask, dialog };
 }
 const today = () => new Date().toISOString().slice(0, 10);
 // Student details a join request and the admission desk both collect.
@@ -309,11 +390,12 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
   const [mode, setMode] = useState("Sign in");
   const [joinRole, setJoinRole] = useState("Student");
   const [joined, setJoined] = useState(false);
-  // Pending registration waiting for the email code: the details stay in the form.
+  // Registration waiting for its emailed code; details stay put.
   const [verifying, setVerifying] = useState<{
     email: string;
     body: Row;
   } | null>(null);
+  const [resent, setResent] = useState("");
   const switchMode = (next: string) => {
     setMode(next);
     setJoined(false);
@@ -329,15 +411,12 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
         </p>
         <Form
           title="Enter the code"
-          fields={[{ ...field("email_code", "Verification code") }]}
+          fields={[field("email_code", "Code from your email")]}
           submit="Verify & register"
           onSubmit={async (v) => {
             const email_code = String(v.email_code).trim();
+            // Registering signs the new member in.
             await api("/communities/join", { ...verifying.body, email_code });
-            await api("/login", {
-              email: verifying.body.email,
-              password: verifying.body.password,
-            });
             setVerifying(null);
             setJoined(true);
           }}
@@ -348,11 +427,12 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
               type="button"
               className="text-button"
               onClick={async () => {
+                setResent("");
                 try {
                   await api("/email/code", { email: verifying.email });
-                  window.alert("A new code has been sent.");
+                  setResent("A new code has been sent.");
                 } catch (e) {
-                  window.alert(errorText(e));
+                  setResent(errorText(e));
                 }
               }}
             >
@@ -362,11 +442,14 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
             <button
               type="button"
               className="text-button"
-              onClick={() => setVerifying(null)}
+              onClick={() => {
+                setVerifying(null);
+                setResent("");
+              }}
             >
               change your email
             </button>
-            .
+            .{resent && <strong> {resent}</strong>}
           </p>
         </Form>
       </div>
@@ -399,6 +482,9 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
   return (
     <>
       <header className="campus-hero">
+        <div className="campus-hero-tools">
+          <ThemeToggle />
+        </div>
         <div className="campus-hero-caption">
           <div className="eyebrow light">{HOSTEL.short} HOSTEL</div>
           <h1>{HOSTEL.name}</h1>
@@ -484,7 +570,7 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
                 code: HOSTEL.code,
                 ...(v.role === "Student" ? { application } : {}),
               };
-              // New emails get a code first; existing accounts go straight on.
+              // With verification on, every registration gets a code first.
               const check = await api<{ required: boolean }>("/email/code", {
                 email: v.email,
               });
@@ -493,7 +579,6 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
                 return;
               }
               await api("/communities/join", body);
-              await api("/login", { email: v.email, password: v.password });
               setJoined(true);
               return;
             }
@@ -1147,7 +1232,9 @@ function Accounts({
 }) {
   const { rows, reload, error } = useRows("/accounts"),
     [selected, setSelected] = useState<Row | null>(null),
-    [add, setAdd] = useState(false);
+    [add, setAdd] = useState(false),
+    [problem, setProblem] = useState(""),
+    confirm = useConfirm();
   const saved = async () => {
     setSelected(null);
     setAdd(false);
@@ -1156,7 +1243,10 @@ function Accounts({
   };
   return (
     <>
-      {error && <p className="notice danger">{error}</p>}
+      {confirm.dialog}
+      {(error || problem) && (
+        <p className="notice danger">{error || problem}</p>
+      )}
       <div className="notice">
         <p>
           New Students and Managers choose “Register” on the {HOSTEL.short}{" "}
@@ -1202,16 +1292,24 @@ function Accounts({
                     if (r.application_id) return setSelected(r);
                     if (
                       r.role === "Admin" &&
-                      !window.confirm(
-                        `Make ${r.name} (${r.email}) an Admin? Admins have full access, including approving people, fees and payments.`,
-                      )
+                      !(await confirm.ask({
+                        title: `Make ${r.name} an Admin?`,
+                        body: (
+                          <>
+                            <strong>{r.email}</strong> will have full access,
+                            including approving people, fees and payments.
+                          </>
+                        ),
+                        confirm: "Approve as Admin",
+                      }))
                     )
                       return;
+                    setProblem("");
                     try {
                       await api(`/accounts/${r.id}`, { status: "Approved" });
                       await saved();
                     } catch (e) {
-                      window.alert(errorText(e));
+                      setProblem(errorText(e));
                     }
                   }}
                 >
@@ -1465,8 +1563,10 @@ function Corrections({
   data: Workspace;
   onSaved: (m: string) => Promise<void>;
 }) {
+  const confirm = useConfirm();
   return (
     <>
+      {confirm.dialog}
       <div className="notice">
         Corrections are administrator-only and require a reason. Original
         receipts and billed rates remain in the audit history. A reversal
@@ -1491,9 +1591,12 @@ function Corrections({
         submit="Reverse selected payment"
         onSubmit={async (v) => {
           if (
-            !window.confirm(
-              "Reverse this payment and reopen its balance? This cannot be undone.",
-            )
+            !(await confirm.ask({
+              title: "Reverse this payment?",
+              body: "Its balance reopens. This cannot be undone.",
+              confirm: "Reverse payment",
+              danger: true,
+            }))
           )
             return;
           await api(`/payments/${v.id}/reverse`, { reason: v.reason });

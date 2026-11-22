@@ -73,7 +73,18 @@ export function registerCommunities(app: Express, db: Store) {
       400,
     );
   }
-  async function identity(b: Row, signup = false) {
+  async function sendCode(email: string) {
+    const sent = await supabase().auth.signInWithOtp({ email });
+    ensure(
+      !sent.error,
+      sent.error?.status === 429
+        ? "Too many codes requested. Wait a minute and try again."
+        : "Could not send the verification email. Try again shortly.",
+      sent.error?.status === 429 ? 429 : 503,
+    );
+  }
+  // `verified`: the caller already checked a code sent to this email.
+  async function identity(b: Row, signup = false, verified = false) {
     ensure(
       text(b.email) &&
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email) &&
@@ -96,7 +107,8 @@ export function registerCommunities(app: Express, db: Store) {
         );
         // A new email must prove ownership with the code Supabase sends to it
         // before an account exists. Existing accounts sign in as usual.
-        if (verification) await verifyEmailCode(email, b.email_code);
+        if (verification && !verified)
+          await verifyEmailCode(email, b.email_code);
         // Accounts are created confirmed by the server: Hostel360 does not
         // depend on verification email delivery. A pre-existing confirmed
         // Auth account keeps its own password; an abandoned unconfirmed sign-up
@@ -115,7 +127,8 @@ export function registerCommunities(app: Express, db: Store) {
           // A verified code proves ownership of an Auth user that has no
           // Hostel360 identity yet (sending the code created it).
           ensure(
-            existing && (verification || !existing.email_confirmed_at),
+            existing &&
+              (verification || verified || !existing.email_confirmed_at),
             "This email already has an account. Use its existing password.",
             409,
           );
@@ -284,8 +297,7 @@ export function registerCommunities(app: Express, db: Store) {
     });
     res.status(201).json({ community });
   });
-  // Sends a one-time code to a new email address. Existing accounts are told
-  // to use their password instead, without sending anything.
+  // Every registration proves the email with a one-time code.
   app.post("/api/email/code", async (req, res) => {
     const email = String(req.body.email || "")
       .trim()
@@ -296,19 +308,7 @@ export function registerCommunities(app: Express, db: Store) {
     );
     if (!verification) return res.json({ required: false });
     await limit(`code:${email}`);
-    if (await db.get("SELECT id FROM identities WHERE email=?", email))
-      return res.json({ required: false, existing: true });
-    const sent = await supabase().auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
-    });
-    ensure(
-      !sent.error,
-      sent.error?.status === 429
-        ? "Too many codes requested. Wait a minute and try again."
-        : "Could not send the verification email. Try again shortly.",
-      sent.error?.status === 429 ? 429 : 503,
-    );
+    await sendCode(email);
     res.json({ required: true, sent: true });
   });
   app.get("/api/email/verification", (_req, res) =>
@@ -333,7 +333,14 @@ export function registerCommunities(app: Express, db: Store) {
           }
         : null;
     if (details) applicationInput(details);
-    const person = await identity(b, true);
+    if (verification)
+      await verifyEmailCode(
+        String(b.email || "")
+          .trim()
+          .toLowerCase(),
+        b.email_code,
+      );
+    const person = await identity(b, true, verification);
     await db.inCommunity(community.id, () =>
       db.transaction(async () => {
         const existing = await db.get(
@@ -366,6 +373,8 @@ export function registerCommunities(app: Express, db: Store) {
           "Membership requested",
           `${person.email} · ${b.role}`,
         );
+        // The email was just proven, so the new member is signed in.
+        await session(res, user, person.version);
       }),
     );
     res.status(201).json({ community, status: "Pending" });

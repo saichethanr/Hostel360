@@ -9,6 +9,16 @@
       content="JSS Polytechnic for Differently Abled Students — hostel administration, mess attendance and fee accounting."
     />
     <title>JSS PDA Hostel</title>
+    <script>
+      // Apply the saved (or system) theme before the first paint.
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem("h360_theme") ||
+          (matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light");
+      } catch {}
+    </script>
     <link
       rel="icon"
       type="image/svg+xml"

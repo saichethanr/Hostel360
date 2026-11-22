@@ -9,6 +9,9 @@
   --forest: #143e32;
   --muted: #7b847e;
   --line: #e8ece5;
+  --chart-grid: #edf0ed;
+  --chart-demand: #dcebc9;
+  --chart-collected: #346e55;
 }
 * {
   box-sizing: border-box;
@@ -3256,4 +3259,19 @@ button.community-choice:focus-visible {
 }
 .setup-page.campus-form {
   margin-top: 32px;
+}
+/* Links inside sentences sit on the text line. */
+.notice .text-button {
+  display: inline;
+  padding: 0;
+  font-size: inherit;
+}
+.campus-hero-tools {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+.campus-hero-tools .icon-button {
+  background: rgba(10, 40, 32, 0.55);
+  color: #fff;
 }

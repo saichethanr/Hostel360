@@ -231,11 +231,15 @@ test(
     });
     assert.equal(right.status, 201, JSON.stringify(right.body));
     assert.equal(users.get("new@test.local")!.password, password);
+
+    // Signing in needs only the password; codes are for registration.
+    const before = sent.length;
     const login = await call(`/login?community=${code}`, {
       email: "new@test.local",
       password,
     });
     assert.equal(login.status, 200, JSON.stringify(login.body));
+    assert.equal(sent.length, before);
 
     // Someone who knows only an email that received a code cannot take it over.
     await call("/email/code", { email: "victim@test.local" });
@@ -247,15 +251,10 @@ test(
     assert.equal(hijack.status, 428);
     assert.equal(users.get("victim@test.local")!.password, "");
 
-    // An existing Hostel360 account is not sent a code; it uses its password.
-    const before = sent.length;
+    // Existing accounts are sent a code too: every registration verifies.
     assert.deepEqual(
       (await call("/email/code", { email: "new@test.local" })).body,
-      {
-        required: false,
-        existing: true,
-      },
+      { required: true, sent: true },
     );
-    assert.equal(sent.length, before);
   },
 );
