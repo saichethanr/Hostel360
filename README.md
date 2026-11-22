@@ -91,6 +91,12 @@ Community archives use version 2, include only that community’s records and me
 
 Remaining plan gaps: configurable room/department/class/academic-year master lists and capacity controls; full organization branding/address/bank settings; applicant corrections/resubmission; import filename/history UI; dedicated monthly attendance summaries; server-side ledger pagination for multi-year growth. Current workspace loading fetches all permitted ledger rows together, so large histories may hit Vercel response limits. Role permissions and payment modes are fixed rather than an editable permission/mode matrix. PDF output uses the browser Print / Save as PDF flow rather than server-generated PDF downloads. No online payment gateway, SMS or biometric attendance is included. Community ownership transfer, additional Admin invitations and self-service forgotten-password recovery are not included in this rollout.
 
+## Registration and Admins
+
+Students, Managers and Admins register from the sign-in page. Every registration stays Pending, with no access to records, until an existing Admin approves it under Operations → Accounts. An approved Admin cannot be disabled by another Admin.
+
+**Required, not yet live: email verification for every registration.** The code exists (`EMAIL_VERIFICATION=on` sends a Supabase one-time code that must be entered before an account is created), but production has no SMTP provider. To finish: connect an SMTP provider (for example Brevo) in Supabase Auth, put `{{ .Token }}` in the Magic Link email template, raise the email rate limit, then set `EMAIL_VERIFICATION=on` on Vercel. The local branch `admin-registration` also has an emailed-code flow for Admin approval that can reuse the same setup.
+
 ## Online payments (Razorpay)
 
 Students pay one fee category at a time by UPI or card. The server always charges the full outstanding balance of that category; verified payments create a receipt, allocate it to the demands and mark fully settled fees Paid.

@@ -420,9 +420,11 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
           key={mode}
           title={mode}
           description={
-            mode === "Register"
-              ? "Students send their hostel details now. The Admin assigns your room and approves you in one step."
-              : "Use your own email and password."
+            mode === "Register" && joinRole === "Admin"
+              ? "Your Admin request goes to the current Admin. You get full access once they approve it."
+              : mode === "Register"
+                ? "Students send their hostel details now. The Admin assigns your room and approves you in one step."
+                : "Use your own email and password."
           }
           fields={[
             ...(mode === "Register" ? [field("name", "Your full name")] : []),
@@ -444,6 +446,7 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
                 >
                   <option>Student</option>
                   <option>Manager</option>
+                  <option>Admin</option>
                 </select>
               </label>
             ) : null
@@ -1197,6 +1200,13 @@ function Accounts({
                   className="button small"
                   onClick={async () => {
                     if (r.application_id) return setSelected(r);
+                    if (
+                      r.role === "Admin" &&
+                      !window.confirm(
+                        `Make ${r.name} (${r.email}) an Admin? Admins have full access, including approving people, fees and payments.`,
+                      )
+                    )
+                      return;
                     try {
                       await api(`/accounts/${r.id}`, { status: "Approved" });
                       await saved();
@@ -1205,7 +1215,11 @@ function Accounts({
                     }
                   }}
                 >
-                  {r.application_id ? "Assign room & approve" : "Approve"}
+                  {r.application_id
+                    ? "Assign room & approve"
+                    : r.role === "Admin"
+                      ? "Approve as Admin"
+                      : "Approve"}
                 </button>
                 {!r.application_id && (
                   <button
@@ -1216,6 +1230,8 @@ function Accounts({
                   </button>
                 )}
               </span>
+            ) : r.id !== data.user.id && r.role === "Admin" ? (
+              "Admin"
             ) : r.id !== data.user.id ? (
               <button
                 className="button secondary small"

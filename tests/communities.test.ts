@@ -267,7 +267,9 @@ test(
         });
         assert.equal(second.status, 201, JSON.stringify(second.body));
         assert.equal(
-          (await db.get("SELECT id FROM identities WHERE email='late@test.local'")),
+          await db.get(
+            "SELECT id FROM identities WHERE email='late@test.local'",
+          ),
           undefined,
           "a rejected ID must not leave a half-created account",
         );
@@ -324,9 +326,55 @@ test(
       },
     );
     await t.test(
-      "only creators become Admin; pending managers and students cannot see or change records",
+      "Admin requests need an existing Admin's approval; pending managers and students cannot see or change records",
       async () => {
-        assert.equal((await join(a, "evil@test.local", "Admin")).status, 400);
+        // An Admin request opens nothing until an existing Admin decides it.
+        assert.equal((await join(a, "deputy@test.local", "Admin")).status, 201);
+        const pendingAdmin = await login(a.code, "deputy@test.local");
+        assert.equal(
+          (await request("/accounts", a.code, pendingAdmin)).status,
+          403,
+        );
+        const deputy = (await members(a)).find(
+          (u: any) => u.email === "deputy@test.local",
+        );
+        assert.equal(deputy.membership_status, "Pending");
+        assert.equal(
+          (
+            await request(`/accounts/${deputy.id}`, a.code, a.cookie, {
+              status: "Approved",
+            })
+          ).status,
+          200,
+        );
+        const approvedAdmin = await login(a.code, "deputy@test.local");
+        assert.equal(
+          (await request("/accounts", a.code, approvedAdmin)).status,
+          200,
+        );
+        // Once approved, one Admin cannot disable another.
+        assert.equal(
+          (
+            await request(`/accounts/${deputy.id}`, a.code, approvedAdmin, {
+              active: 0,
+            })
+          ).status,
+          400,
+        );
+        assert.equal(
+          (
+            await request(
+              "/accounts/" +
+                (await members(a)).find(
+                  (u: any) => u.email === "cedar@test.local",
+                ).id,
+              a.code,
+              approvedAdmin,
+              { active: 0 },
+            )
+          ).status,
+          403,
+        );
         for (const [email, role] of [
           ["manager@test.local", "Manager"],
           ["student@test.local", "Student"],
@@ -671,7 +719,11 @@ test(
         assert.equal(wb.user.role, "Student");
         // The hostel code stands in for the college ID; parent phone carries over.
         assert.deepEqual(
-          wb.students.map((s: any) => [s.roll === s.code, s.room, s.guardian_phone]),
+          wb.students.map((s: any) => [
+            s.roll === s.code,
+            s.room,
+            s.guardian_phone,
+          ]),
           [[true, "R-12", "9123456780"]],
         );
         assert.equal(

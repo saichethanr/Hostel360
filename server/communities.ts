@@ -184,8 +184,7 @@ export function registerCommunities(app: Express, db: Store) {
   }
   // A single-hostel deployment serves only this community code.
   const only = () => process.env.HOSTEL_COMMUNITY?.trim().toLowerCase();
-  const multi = () =>
-    ensure(!only(), "This site serves a single hostel.", 404);
+  const multi = () => ensure(!only(), "This site serves a single hostel.", 404);
   const communityByCode = async (code: unknown) => {
     ensure(text(code, 80), "Choose your community.");
     ensure(
@@ -318,8 +317,8 @@ export function registerCommunities(app: Express, db: Store) {
   app.post("/api/communities/join", async (req, res) => {
     const b = req.body;
     ensure(
-      text(b.name) && ["Manager", "Student"].includes(b.role),
-      "Enter your name and request Manager or Student access.",
+      text(b.name) && ["Admin", "Manager", "Student"].includes(b.role),
+      "Enter your name and request Admin, Manager or Student access.",
     );
     const community = await communityByCode(b.code);
     // Students send their hostel details now, so approval is a single step.
@@ -551,9 +550,12 @@ export function registerCommunities(app: Express, db: Store) {
     await db.transaction(async () => {
       const user = await db.get("SELECT * FROM users WHERE id=?", id);
       ensure(user, "Member not found.", 404);
+      // A pending Admin request is decided by an existing Admin; an approved
+      // Admin's access cannot be changed by another Admin.
       ensure(
-        user.role !== "Admin",
-        "Community creator access cannot be changed here.",
+        user.role !== "Admin" ||
+          (user.membership_status === "Pending" && b.status !== undefined),
+        "Another Admin’s access cannot be changed here.",
         403,
       );
       if (b.status !== undefined) {
