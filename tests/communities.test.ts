@@ -290,6 +290,40 @@ test(
       },
     );
     await t.test(
+      "a single-hostel site serves only its own community",
+      async () => {
+        process.env.HOSTEL_COMMUNITY = a.code.toUpperCase();
+        try {
+          for (const path of [
+            "/communities/search?q=cedar",
+            "/communities/available?code=new-hostel",
+          ])
+            assert.equal((await request(path, "", "")).status, 404, path);
+          const create = await request("/communities", "", "", {
+            community_name: "Rogue Hostel",
+            name: "Rogue",
+            email: "rogue@test.local",
+            password: "RoguePassword12!",
+          });
+          assert.equal(create.status, 404);
+          assert.equal(
+            (await join(b, "outsider@test.local", "Student")).status,
+            404,
+          );
+          assert.equal(
+            (await request("/workspace", b.code, b.cookie)).status,
+            404,
+          );
+          assert.equal(
+            (await request("/workspace", a.code, a.cookie)).status,
+            200,
+          );
+        } finally {
+          delete process.env.HOSTEL_COMMUNITY;
+        }
+      },
+    );
+    await t.test(
       "only creators become Admin; pending managers and students cannot see or change records",
       async () => {
         assert.equal((await join(a, "evil@test.local", "Admin")).status, 400);

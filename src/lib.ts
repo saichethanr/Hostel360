@@ -115,18 +115,14 @@ export class RequestError extends Error {
     super(message);
   }
 }
-export const communityCode = () =>
-  new URLSearchParams(window.location.search).get("community") ||
-  sessionStorage.getItem("h360_community") ||
-  "";
-export function selectCommunity(code: string) {
-  sessionStorage.setItem("h360_community", code);
-  const url = new URL(window.location.href);
-  url.searchParams.set("community", code);
-  window.history.replaceState(null, "", url);
-}
+// This deployment serves a single hostel.
+export const HOSTEL = {
+  code: "jss-pda",
+  short: "JSS PDA",
+  name: "JSS Polytechnic for Differently Abled Students",
+};
+export const communityCode = () => HOSTEL.code;
 export function leaveCommunity() {
-  sessionStorage.removeItem("h360_community");
   window.location.assign("/");
 }
 export function apiUrl(path: string) {

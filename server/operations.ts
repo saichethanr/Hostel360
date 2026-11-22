@@ -963,7 +963,7 @@ export function registerOperations(
             ? (await demands()).filter((d) => d.balance > 0)
             : await db.all("SELECT * FROM audit ORDER BY id DESC");
     const book = new ExcelJS.Workbook();
-    book.creator = "Hostel360";
+    book.creator = "JSS PDA Hostel";
     const sheet = book.addWorksheet(String(kind));
     const keys = rows.length ? Object.keys(rows[0]) : ["No records"];
     sheet.columns = keys.map((key) => ({ header: key, key, width: 24 }));
@@ -973,7 +973,7 @@ export function registerOperations(
     res.set({
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="hostel360-${kind}.xlsx"`,
+      "Content-Disposition": `attachment; filename="jss-pda-${kind}.xlsx"`,
     });
     res.send(Buffer.from(await book.xlsx.writeBuffer()));
   });
@@ -988,7 +988,7 @@ export function registerOperations(
     res
       .set(
         "Content-Disposition",
-        `attachment; filename="hostel360-export-${today()}.json"`,
+        `attachment; filename="jss-pda-export-${today()}.json"`,
       )
       .json(data);
   });

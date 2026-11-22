@@ -8,14 +8,12 @@ import {
 import {
   api,
   apiUrl,
-  communityCode,
-  selectCommunity,
+  HOSTEL,
   leaveCommunity,
   money,
   dateName,
   type Student,
   type Workspace,
-  type Community,
   type Membership,
 } from "./lib";
 
@@ -307,249 +305,40 @@ const exportButton = (kind: string, label: string) => (
   </a>
 );
 
-const communitySlug = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/['’]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    .replace(/-+$/g, "");
-
-// Find a community by its name or readable ID; nobody types a random code.
-function CommunityPicker({
-  value,
-  onChange,
-}: {
-  value: Community | null;
-  onChange: (c: Community | null) => void;
-}) {
-  const [query, setQuery] = useState(""),
-    [results, setResults] = useState<Community[]>([]),
-    [searched, setSearched] = useState(false);
-  useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) {
-      setResults([]);
-      setSearched(false);
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      api<Community[]>(`/communities/search?q=${encodeURIComponent(q)}`)
-        .then((rows) => {
-          if (!cancelled) {
-            setResults(rows);
-            setSearched(true);
-          }
-        })
-        .catch(() => !cancelled && setResults([]));
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [query]);
-  if (value)
-    return (
-      <div className="field community-picked">
-        <span>Community</span>
-        <div className="community-choice selected">
-          <div>
-            <strong>{value.name}</strong>
-            <small>ID: {value.code}</small>
-          </div>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => {
-              onChange(null);
-              setQuery("");
-            }}
-          >
-            Change
-          </button>
-        </div>
-      </div>
-    );
-  return (
-    <div className="field community-picker">
-      <label htmlFor="community-search">
-        <span>Find your community</span>
-      </label>
-      <input
-        id="community-search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Type the hostel name or community ID, e.g. sais-hostel"
-        autoComplete="off"
-      />
-      {results.length > 0 && (
-        <div className="community-results" role="listbox">
-          {results.map((c) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={false}
-              key={c.code}
-              className="community-choice"
-              onClick={() => onChange(c)}
-            >
-              <strong>{c.name}</strong>
-              <small>ID: {c.code}</small>
-            </button>
-          ))}
-        </div>
-      )}
-      {searched && !results.length && (
-        <small className="community-empty">
-          No community matches “{query.trim()}”. Check the spelling or ask your
-          Admin for the community ID.
-        </small>
-      )}
-    </div>
-  );
-}
-
 export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
   const [mode, setMode] = useState("Sign in");
-  const [community, setCommunity] = useState<Community | null>(null);
-  const [created, setCreated] = useState<Community | null>(null);
-  const [joined, setJoined] = useState<Community | null>(null);
-  const [hostelName, setHostelName] = useState("");
   const [joinRole, setJoinRole] = useState("Student");
-  // Pending join waiting for the email code: the details stay in the form.
-  const [verifying, setVerifying] = useState<{
-    email: string;
-    body: Row;
-    create: boolean;
-  } | null>(null);
-  const [customId, setCustomId] = useState("");
-  const [idEdited, setIdEdited] = useState(false);
-  useEffect(() => {
-    const code = communityCode();
-    if (code)
-      api<{ community?: Community }>("/config")
-        .then((c) => c.community && setCommunity(c.community))
-        .catch(() => leaveCommunity());
-  }, []);
-  const typedId = idEdited
-    ? communitySlug(customId)
-    : communitySlug(hostelName);
-  const [idCheck, setIdCheck] = useState<{
-    code: string;
-    valid: boolean;
-    available: boolean;
-    suggestion: string;
-  } | null>(null);
-  useEffect(() => {
-    if (!typedId) return setIdCheck(null);
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      api<NonNullable<typeof idCheck>>(
-        `/communities/available?code=${encodeURIComponent(typedId)}`,
-      )
-        .then((r) => !cancelled && setIdCheck(r))
-        .catch(() => !cancelled && setIdCheck(null));
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [typedId]);
-  // Untouched suggestions take the next free ID; a typed ID must be free.
-  const suggestedId =
-    !idEdited && idCheck?.code === typedId && idCheck.suggestion
-      ? idCheck.suggestion
-      : typedId;
+  const [joined, setJoined] = useState(false);
+  // Pending registration waiting for the email code: the details stay in the form.
+  const [verifying, setVerifying] = useState<{ email: string; body: Row } | null>(
+    null,
+  );
   const switchMode = (next: string) => {
     setMode(next);
-    setCreated(null);
-    setJoined(null);
+    setJoined(false);
   };
-  if (created)
-    return (
-      <div className="setup-page community-page">
-        <div className="eyebrow">COMMUNITY CREATED</div>
-        <h1>{created.name} is ready.</h1>
-        <p>
-          You are its Admin. Share the community ID with your students and
-          managers.
-        </p>
-        <section className="panel operation-form community-share">
-          <span>Community ID</span>
-          <strong className="community-id">{created.code}</strong>
-          <p>
-            People open Hostel360, choose <strong>Join a community</strong>, and
-            search “{created.name}” or “{created.code}”. Their requests appear
-            under Operations → Accounts for you to approve.
-          </p>
-          <div className="community-share-actions">
-            <button
-              className="button secondary"
-              onClick={() =>
-                void navigator.clipboard?.writeText(
-                  `${window.location.origin}/?community=${created.code}`,
-                )
-              }
-            >
-              Copy join link
-            </button>
-            <button className="button" onClick={() => void onLogin()}>
-              Open my community
-            </button>
-          </div>
-        </section>
-      </div>
-    );
-  if (verifying && (verifying.create || community))
+  if (verifying)
     return (
       <div className="setup-page community-page">
         <div className="eyebrow">VERIFY YOUR EMAIL</div>
         <h1>Check your inbox.</h1>
         <p>
-          We sent a code to <strong>{verifying.email}</strong>. Enter it to{" "}
-          {verifying.create
-            ? `create ${verifying.body.community_name}`
-            : `send your request to ${community!.name}`}
-          .
+          We sent a code to <strong>{verifying.email}</strong>. Enter it to send
+          your registration to {HOSTEL.short}.
         </p>
         <Form
           title="Enter the code"
-          fields={[
-            {
-              ...field("email_code", "Verification code"),
-            },
-          ]}
-          submit={
-            verifying.create
-              ? "Verify & create community"
-              : "Verify & send request"
-          }
+          fields={[{ ...field("email_code", "Verification code") }]}
+          submit="Verify & register"
           onSubmit={async (v) => {
             const email_code = String(v.email_code).trim();
-            const login = {
+            await api("/communities/join", { ...verifying.body, email_code });
+            await api("/login", {
               email: verifying.body.email,
               password: verifying.body.password,
-            };
-            if (verifying.create) {
-              const result = await api<{ community: Community }>(
-                "/communities",
-                { ...verifying.body, email_code },
-              );
-              selectCommunity(result.community.code);
-              await api("/login", login);
-              setVerifying(null);
-              setCreated(result.community);
-              return;
-            }
-            await api("/communities/join", { ...verifying.body, email_code });
-            selectCommunity(community!.code);
-            await api("/login", login);
+            });
             setVerifying(null);
-            setJoined(community!);
+            setJoined(true);
           }}
         >
           <p className="notice">
@@ -584,11 +373,11 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
   if (joined)
     return (
       <div className="setup-page community-page">
-        <div className="eyebrow">REQUEST SENT</div>
-        <h1>Your request is with the Admin.</h1>
+        <div className="eyebrow">REGISTRATION SENT</div>
+        <h1>Your registration is with the Admin.</h1>
         <p>
-          {joined.name}’s Admin has been notified. You can sign in now to check
-          your status; records open once you are approved.
+          The {HOSTEL.short} Admin has been notified. You can sign in now to
+          check your status; records open once you are approved.
         </p>
         <button
           className="button"
@@ -598,25 +387,24 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
               await api("/membership");
               await onLogin();
             } catch {
-              setJoined(null);
-              setMode("Sign in");
+              switchMode("Sign in");
             }
           }}
         >
-          Check my request status
+          Check my registration status
         </button>
       </div>
     );
   return (
     <div className="setup-page community-page">
-      <div className="eyebrow">HOSTEL360 · YOUR COMMUNITY, CONNECTED</div>
-      <h1>A place for every hostel.</h1>
+      <div className="eyebrow">{HOSTEL.short} HOSTEL</div>
+      <h1>{HOSTEL.name}</h1>
       <p>
-        Create a community as its Admin, or join yours as a Manager or Student.
-        Each community has its own people and private records.
+        Sign in to the hostel, or register as a Student or Manager. The Admin
+        approves every new account.
       </p>
-      <div className="tabs" aria-label="Community access">
-        {["Sign in", "Create a community", "Join a community"].map((label) => (
+      <div className="tabs" aria-label="Hostel access">
+        {["Sign in", "Register"].map((label) => (
           <button
             key={label}
             className={mode === label ? "active" : ""}
@@ -630,107 +418,41 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
         key={mode}
         title={mode}
         description={
-          mode === "Create a community"
-            ? "You’ll be the Admin. Pick a short, memorable community ID to share, then approve the people who request to join."
-            : mode === "Join a community"
-              ? "Search for your hostel by name. The Admin assigns your room and approves your request in one step."
-              : "Choose your community, then use your own email and password."
+          mode === "Register"
+            ? "Students send their hostel details now. The Admin assigns your room and approves you in one step."
+            : "Use your own email and password."
         }
         fields={[
-          ...(mode !== "Sign in" ? [field("name", "Your full name")] : []),
+          ...(mode === "Register" ? [field("name", "Your full name")] : []),
           field("email", "Email", "email"),
           field(
             "password",
-            mode === "Sign in"
-              ? "Password"
-              : "Password (12+ characters, or your existing Hostel360 password)",
+            mode === "Sign in" ? "Password" : "Password (12+ characters)",
             "password",
           ),
         ]}
         before={
-          mode === "Create a community" ? (
-            <>
-              <label className="field">
-                <span>Community / hostel name</span>
-                <input
-                  name="community_name"
-                  required
-                  maxLength={120}
-                  value={hostelName}
-                  onChange={(e) => setHostelName(e.target.value)}
-                  placeholder="e.g. Sai's Hostel"
-                />
-              </label>
-              <label className="field">
-                <span>Community ID (people search or type this)</span>
-                <input
-                  name="code"
-                  maxLength={40}
-                  value={idEdited ? customId : suggestedId}
-                  onChange={(e) => {
-                    setIdEdited(true);
-                    setCustomId(e.target.value);
-                  }}
-                  onBlur={() =>
-                    idEdited && setCustomId(communitySlug(customId))
-                  }
-                  placeholder="e.g. sais-hostel"
-                />
-                {idCheck?.code === typedId && !idCheck.valid ? (
-                  <small className="id-status bad">
-                    Use 3–40 letters, numbers or hyphens.
-                  </small>
-                ) : idCheck?.code === typedId &&
-                  !idCheck.available &&
-                  idEdited ? (
-                  <small className="id-status bad">
-                    “{typedId}” is taken.{" "}
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => setCustomId(idCheck.suggestion)}
-                    >
-                      Use {idCheck.suggestion}
-                    </button>
-                  </small>
-                ) : idCheck?.code === typedId ? (
-                  <small className="id-status good">
-                    ✓ {suggestedId} is available
-                    {!idEdited && suggestedId !== typedId
-                      ? ` (${typedId} is already used)`
-                      : ""}
-                  </small>
-                ) : (
-                  <small>Letters, numbers and hyphens.</small>
-                )}
-              </label>
-            </>
-          ) : (
-            <>
-              <CommunityPicker value={community} onChange={setCommunity} />
-              {mode === "Join a community" && (
-                <label className="field">
-                  <span>I am joining as</span>
-                  <select
-                    name="role"
-                    value={joinRole}
-                    onChange={(e) => setJoinRole(e.target.value)}
-                  >
-                    <option>Student</option>
-                    <option>Manager</option>
-                  </select>
-                </label>
-              )}
-            </>
-          )
+          mode === "Register" ? (
+            <label className="field">
+              <span>I am registering as</span>
+              <select
+                name="role"
+                value={joinRole}
+                onChange={(e) => setJoinRole(e.target.value)}
+              >
+                <option>Student</option>
+                <option>Manager</option>
+              </select>
+            </label>
+          ) : null
         }
         after={
-          mode === "Join a community" && joinRole === "Student" ? (
+          mode === "Register" && joinRole === "Student" ? (
             <fieldset className="join-details">
               <legend>Your hostel details</legend>
               <p>
-                Sent with your request. The Admin assigns your room and approves
-                you in one step.
+                Sent with your registration. The Admin assigns your room and
+                approves you in one step.
               </p>
               <div className="form-grid">
                 {studentDetailFields(today()).map((f) => (
@@ -740,28 +462,9 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
             </fieldset>
           ) : null
         }
-        submit={mode === "Join a community" ? "Send join request" : mode}
+        submit={mode === "Register" ? "Send registration" : mode}
         onSubmit={async (v) => {
-          if (mode === "Create a community") {
-            const body = { ...v, code: suggestedId, custom_code: idEdited };
-            const check = await api<{ required: boolean }>("/email/code", {
-              email: v.email,
-            });
-            if (check.required) {
-              setVerifying({ email: String(v.email), body, create: true });
-              return;
-            }
-            const result = await api<{ community: Community }>(
-              "/communities",
-              body,
-            );
-            selectCommunity(result.community.code);
-            await api("/login", { email: v.email, password: v.password });
-            setCreated(result.community);
-            return;
-          }
-          if (!community) throw new Error("Choose your community first.");
-          if (mode === "Join a community") {
+          if (mode === "Register") {
             const detailKeys = studentDetailFields(today()).map((f) => f.name);
             const application = Object.fromEntries(
               detailKeys.map((k) => [k, k === "year" ? Number(v[k]) : v[k]]),
@@ -771,7 +474,7 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
               email: v.email,
               password: v.password,
               role: v.role,
-              code: community.code,
+              code: HOSTEL.code,
               ...(v.role === "Student" ? { application } : {}),
             };
             // New emails get a code first; existing accounts go straight on.
@@ -779,28 +482,18 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
               email: v.email,
             });
             if (check.required) {
-              setVerifying({ email: String(v.email), body, create: false });
+              setVerifying({ email: String(v.email), body });
               return;
             }
             await api("/communities/join", body);
-            selectCommunity(community.code);
             await api("/login", { email: v.email, password: v.password });
-            setJoined(community);
+            setJoined(true);
             return;
           }
-          selectCommunity(community.code);
           await api("/login", { email: v.email, password: v.password });
           await onLogin();
         }}
-      >
-        {mode !== "Sign in" && (
-          <p className="notice">
-            Already use Hostel360 in another community? Use the same email and
-            password. Joining a community never grants access until its Admin
-            approves you.
-          </p>
-        )}
-      </Form>
+      />
     </div>
   );
 }
@@ -830,7 +523,7 @@ export function MembershipStatus({
       await api<Membership>("/membership");
       await refresh();
       setChecked(
-        `Still waiting for the Admin · checked at ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. We’ll open your community as soon as you’re approved.`,
+        `Still waiting for the Admin · checked at ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. We’ll open the hostel as soon as you’re approved.`,
       );
     } catch {
       setChecked(
@@ -862,7 +555,7 @@ export function MembershipStatus({
             ? membership.role === "Student"
               ? "Your details are with the Admin, who will assign your room and approve you. No further form is needed."
               : "The Admin will review your request."
-            : "Contact your community Admin if you have questions."}
+            : "Contact the hostel Admin if you have questions."}
         </p>
         {membership.reason && (
           <p className="notice">Admin’s reason: {membership.reason}</p>
@@ -888,7 +581,7 @@ export function MembershipStatus({
       </section>
       {signOut.dialog}
       <button className="button secondary" onClick={signOut.ask}>
-        Sign out / choose another community
+        Sign out
       </button>
     </div>
   );
@@ -904,7 +597,7 @@ export function Setup({ onDone }: { onDone: () => void }) {
   }, [setupKey]);
   return (
     <div className="setup-page">
-      <div className="eyebrow">HOSTEL360 · SECURE ACTIVATION</div>
+      <div className="eyebrow">JSS PDA HOSTEL · SECURE ACTIVATION</div>
       <h1>Make this workspace yours.</h1>
       <p>
         Create the first administrator. Setup closes permanently after this
@@ -1456,21 +1149,13 @@ function Accounts({
   return (
     <>
       {error && <p className="notice danger">{error}</p>}
-      {data.community && (
-        <div className="notice">
-          <strong>
-            {data.settings.hostel_name} · Community ID: {data.community.code}
-          </strong>
-          <p>
-            Share this ID or{" "}
-            <a href={`/?community=${data.community.code}`}>this join link</a>.
-            People choose “Join a community”, search “
-            {data.settings.hostel_name}” and request Student or Manager access.
-            Review each request below. Passwords belong to the person and cannot
-            be reset by a community Admin.
-          </p>
-        </div>
-      )}
+      <div className="notice">
+        <p>
+          New Students and Managers choose “Register” on the {HOSTEL.short}{" "}
+          sign-in page. Review each registration below. Passwords belong to the
+          person and cannot be reset by the Admin.
+        </p>
+      </div>
       <section className="panel">
         <div className="panel-heading">
           <div>
@@ -1653,7 +1338,7 @@ function Accounts({
             <Form
               key={selected.id}
               title={`Review ${selected.name} · ${selected.role}`}
-              description="Approval only applies to this community. Check the person’s identity before granting access."
+              description="Check the person’s identity before granting access."
               fields={[
                 {
                   name: "status",
@@ -1861,7 +1546,7 @@ function Imports({ onSaved }: { onSaved: (m: string) => Promise<void> }) {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = `hostel360-${kind}-template.xlsx`;
+    a.download = `jss-pda-${kind}-template.xlsx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };

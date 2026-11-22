@@ -59,7 +59,7 @@ import {
   type Student,
   type Workspace,
   type Membership,
-  leaveCommunity,
+  HOSTEL,
 } from "./lib";
 import {
   Operations,
@@ -111,7 +111,7 @@ const pageDescriptions: Record<Page, string> = {
     "Admissions, accounts and the details that keep your hostel running.",
   "My application": "Your application, details and admission decision.",
   "My account": "Keep your workspace access secure.",
-  Settings: "Make Hostel360 feel at home.",
+  Settings: "Make the hostel workspace feel at home.",
 };
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong.";
@@ -253,7 +253,7 @@ function Login({
             <Building2 size={24} />
           </div>
           <span>
-            hostel<span className="brand-light">360</span>
+            JSS <span className="brand-light">PDA</span>
             <span className="brand-dot">.</span>
           </span>
         </div>
@@ -301,7 +301,7 @@ function Login({
           <div className="small-icon">
             <Building2 size={24} />
           </div>
-          <h2>Welcome to Hostel360</h2>
+          <h2>Welcome to JSS PDA Hostel</h2>
           <p>Your hostel’s day starts here.</p>
           <form
             onSubmit={(e) => {
@@ -369,7 +369,7 @@ function Login({
         </div>
         <div className="login-bottom">
           {hostel}
-          <span>Powered by Hostel360</span>
+          <span>{HOSTEL.name}</span>
         </div>
       </section>
     </div>
@@ -381,7 +381,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState({
     demo: false,
-    hostel_name: "Hostel360",
+    hostel_name: HOSTEL.name,
     setup: false,
     communities: false,
   });
@@ -456,14 +456,6 @@ function App() {
       setToast(errorMessage(e));
     }
   });
-  const changeCommunity = useSignOutConfirm(async () => {
-    try {
-      await api("/logout", {});
-      leaveCommunity();
-    } catch (e) {
-      setToast(errorMessage(e));
-    }
-  });
   if (loading)
     return (
       <div className="loading-screen">
@@ -479,9 +471,6 @@ function App() {
         <h2>Unable to connect</h2>
         <p>{fatal}</p>
         <Button onClick={() => window.location.reload()}>Try again</Button>
-        <Button variant="secondary" onClick={leaveCommunity}>
-          Choose another community
-        </Button>
       </div>
     );
   if (!data && config.setup)
@@ -535,7 +524,6 @@ function App() {
   return (
     <div className="app-shell">
       {signOut.dialog}
-      {changeCommunity.dialog}
       {menu && <div className="sidebar-scrim" onClick={() => setMenu(false)} />}
       <aside
         id="workspace-navigation"
@@ -553,7 +541,7 @@ function App() {
             <Building2 size={23} />
           </div>
           <span>
-            hostel<span className="brand-light">360</span>
+            JSS <span className="brand-light">PDA</span>
             <span className="brand-dot">.</span>
           </span>
         </a>
@@ -562,12 +550,8 @@ function App() {
             <Building2 size={17} />
           </div>
           <div>
-            <strong>
-              {data.settings.hostel_name.replace(" Student Hostel", "")}
-            </strong>
-            <small>
-              {data.community ? `ID: ${data.community.code}` : "Student hostel"}
-            </small>
+            <strong>{HOSTEL.short}</strong>
+            <small>{HOSTEL.name}</small>
           </div>
           <span className="workspace-status" title="Connected" />
         </div>
@@ -611,14 +595,6 @@ function App() {
           })}
         </nav>
         <div className="sidebar-bottom">
-          {data.community && (
-            <button
-              className="button secondary small"
-              onClick={changeCommunity.ask}
-            >
-              Change community
-            </button>
-          )}
           <div className="help-card">
             <div className="help-card-title">
               <Sparkles size={17} /> A little help goes a long way.
@@ -680,7 +656,7 @@ function App() {
               <div className="eyebrow">
                 {page === "Dashboard"
                   ? "YOUR HOSTEL, AT A GLANCE"
-                  : "HOSTEL360 WORKSPACE"}
+                  : "JSS PDA HOSTEL"}
               </div>
               <h1>
                 {page === "Dashboard"
@@ -760,8 +736,7 @@ function App() {
               <span className="live-dot" /> All in one place. All accounted for.
             </span>
             <span>
-              Hostel360 <span className="footer-dot">·</span> Built for better
-              hostel days
+              {HOSTEL.name}
             </span>
           </footer>
         </main>
@@ -874,7 +849,7 @@ function App() {
       {help && (
         <Modal
           title="A good place to start"
-          subtitle="Your Hostel360 quick guide"
+          subtitle="Your JSS PDA Hostel quick guide"
           onClose={() => setHelp(false)}
         >
           <div className="modal-body">
@@ -1126,7 +1101,7 @@ function Dashboard({
                   {data.pending_members} join{" "}
                   {data.pending_members === 1 ? "request" : "requests"} waiting
                 </strong>
-                <p>Approve students and managers for this community</p>
+                <p>Approve students and managers for this hostel</p>
                 <span>
                   Review requests <ArrowRight size={12} />
                 </span>
@@ -1442,7 +1417,7 @@ function Students({
             icon={ArrowDownToLine}
             onClick={() =>
               downloadCsv(
-                "hostel360-students.csv",
+                "jss-pda-students.csv",
                 [
                   "Code",
                   "Name",
@@ -2412,7 +2387,7 @@ function PaymentsPage({
           icon={ArrowDownToLine}
           onClick={() =>
             downloadCsv(
-              "hostel360-collections.csv",
+              "jss-pda-collections.csv",
               [
                 "Receipt",
                 "Date",
@@ -2829,7 +2804,7 @@ function ReceiptModal({
           </div>
           <div>
             <h2>{r.hostel}</h2>
-            <p>Hostel360 · {r.category} payment receipt</p>
+            <p>{HOSTEL.short} · {r.category} payment receipt</p>
           </div>
           <Badge
             tone={r.reversed_at || r.refunded_amount > 0 ? "amber" : "green"}
@@ -2938,7 +2913,7 @@ function Reports({ data }: { data: Workspace }) {
   const [tab, setTab] = useState("Financial overview");
   const exportOutstanding = () =>
     downloadCsv(
-      "hostel360-outstanding.csv",
+      "jss-pda-outstanding.csv",
       [
         "Student",
         "Code",

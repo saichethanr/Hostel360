@@ -872,7 +872,7 @@ export function createApp(
         return res
           .status(409)
           .json({ error: "A record with these identifiers already exists." });
-      console.error("Hostel360 request failed", { name: e.name, code: e.code });
+      console.error("Request failed", { name: e.name, code: e.code });
       res
         .status(500)
         .json({ error: "The request could not be saved. Please try again." });

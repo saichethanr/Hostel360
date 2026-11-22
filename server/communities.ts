@@ -116,7 +116,7 @@ export function registerCommunities(app: Express, db: Store) {
           // Hostel360 identity yet (sending the code created it).
           ensure(
             existing && (verification || !existing.email_confirmed_at),
-            "This email already has a Hostel360 account. Use its existing password.",
+            "This email already has an account. Use its existing password.",
             409,
           );
           const updated = await auth.admin.updateUserById(existing.id, {
@@ -130,7 +130,7 @@ export function registerCommunities(app: Express, db: Store) {
       ensure(
         !result.error && result.data.user,
         person
-          ? "This email already has a Hostel360 account, and the password doesn’t match. Enter that account’s password (one account can create or join several communities), or use a different email."
+          ? "This email already has an account, and the password doesn’t match. Enter that account’s password, or use a different email."
           : "Email or password is incorrect.",
         401,
       );
@@ -182,8 +182,17 @@ export function registerCommunities(app: Express, db: Store) {
     );
     return person;
   }
+  // A single-hostel deployment serves only this community code.
+  const only = () => process.env.HOSTEL_COMMUNITY?.trim().toLowerCase();
+  const multi = () =>
+    ensure(!only(), "This site serves a single hostel.", 404);
   const communityByCode = async (code: unknown) => {
     ensure(text(code, 80), "Choose your community.");
+    ensure(
+      !only() || code.trim().toLowerCase() === only(),
+      "Community not found.",
+      404,
+    );
     const community = await db.get(
       "SELECT id,code,name FROM communities WHERE code=?",
       code.trim().toLowerCase(),
@@ -219,6 +228,7 @@ export function registerCommunities(app: Express, db: Store) {
       now(),
     );
   app.post("/api/communities", async (req, res) => {
+    multi();
     const b = req.body;
     ensure(
       text(b.name) && text(b.community_name),
@@ -374,6 +384,7 @@ export function registerCommunities(app: Express, db: Store) {
   };
   // Live check while the Admin types: is this ID free, and what is a free one?
   app.get("/api/communities/available", async (req, res) => {
+    multi();
     const code = slug(String(req.query.code || ""));
     if (!validCode(code))
       return res.json({ code, valid: false, available: false, suggestion: "" });
@@ -390,6 +401,7 @@ export function registerCommunities(app: Express, db: Store) {
   });
   // Public directory search: names and IDs only, never members or records.
   app.get("/api/communities/search", async (req, res) => {
+    multi();
     const q = String(req.query.q || "")
       .trim()
       .toLowerCase()
@@ -419,7 +431,7 @@ export function registerCommunities(app: Express, db: Store) {
         communities: true,
         demo: false,
         setup: false,
-        hostel_name: "Hostel360",
+        hostel_name: "JSS Polytechnic for Differently Abled Students",
       });
     ensure(code, "Choose a community to continue.", 401);
     const community = await communityByCode(code);

@@ -1,4 +1,4 @@
-# Hostel360
+# JSS PDA Hostel
 
 Hostel administration and accounting for independent communities, based on the application-level plan dated 10 November 2026. React/TypeScript frontend, Express API, Supabase PostgreSQL/Auth/private Storage, and Vercel hosting.
 
@@ -17,7 +17,7 @@ The core operational workflows are deployed. Treat this as a pilot until hostel 
 
 Passwords belong to people, not communities. Community Admins cannot create/reset other people’s passwords or grant themselves access to someone else’s community. A password change through **My account** invalidates sessions in every community. Pending/rejected/disabled members may sign in only to see their own access status (and change their own password through the API), not business records.
 
-Production (https://hostel360-nine.vercel.app) runs this multi-community version with online payments enabled in Razorpay Test Mode.
+Production (https://hostel360-nine.vercel.app) serves a single hostel, JSS Polytechnic for Differently Abled Students (community code `jss-pda`), with online payments in Razorpay Test Mode. Set `HOSTEL_COMMUNITY=jss-pda` on the server: creating communities, the community search and every other community code are then refused. Students and Managers register from the sign-in page and the Admin approves them. The UI's fixed hostel is `HOSTEL` in `src/lib.ts`.
 
 ## Implemented workflows
 
@@ -51,7 +51,7 @@ npm test
 npm run build
 ```
 
-The API and Vite UI share port 3000 (`PORT` overrides it). Development SQLite is `data/hostel360.sqlite` (`DATABASE_PATH` overrides it), with fictional demo records. Demo accounts: `admin@hostel360.demo`, `manager@hostel360.demo`, `student@hostel360.demo`; password `Hostel360Demo!`. Never enable demo mode against production data.
+The API and Vite UI share port 3000 (`PORT` overrides it). Development SQLite is `data/hostel360.sqlite` (`DATABASE_PATH` overrides it), with fictional demo records. Demo accounts: `admin@hostel360.demo`, `manager@hostel360.demo`, `student@hostel360.demo`; password `JSS PDA HostelDemo!`. Never enable demo mode against production data.
 
 `DEMO_MODE=true npm start` serves the compiled local demonstration. `DEMO_MODE=false` disables seeding. `DATABASE_URL` selects PostgreSQL. `npm run dev` does not watch backend files: restart it after server changes; Vite reloads frontend edits.
 
@@ -59,7 +59,7 @@ For a community preview, apply both SQL migrations to a disposable PostgreSQL da
 
 ## Deployment configuration
 
-The production project is `hostel360` on Vercel, using the dedicated Hostel360 Supabase project `mtxznwjxiruaxopepudr`, not StreetWatch's database.
+The production project is `hostel360` on Vercel, using the dedicated JSS PDA Hostel Supabase project `mtxznwjxiruaxopepudr`, not StreetWatch's database.
 
 Server-only encrypted Vercel environment variables: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_CA`, `CRON_SECRET`, and `COOKIE_SECURE=true`. `BOOTSTRAP_TOKEN` is obsolete after community rollout. Never use a `VITE_` prefix for credentials. Use the transaction pooler, TLS certificate validation, and a dedicated limited database login; never use an owner, superuser or BYPASSRLS connection for the running application.
 

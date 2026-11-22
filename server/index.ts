@@ -28,6 +28,6 @@ if (production) {
 const port = Number(process.env.PORT || 3000);
 app.listen(port, "0.0.0.0", () =>
   console.log(
-    `Hostel360 listening on port ${port}${demo ? " · DEMO DATA" : ""}`,
+    `JSS PDA Hostel listening on port ${port}${demo ? " · DEMO DATA" : ""}`,
   ),
 );
