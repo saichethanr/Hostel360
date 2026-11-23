@@ -487,7 +487,7 @@ test(
             academic_year: "2026-2027",
             student_ids: [s.body.id],
           });
-          assert.deepEqual(promoted.body, { promoted: 1, total: amount });
+          assert.deepEqual(promoted.body, { promoted: 1, repeating: 0, total: amount });
           const demand = (await request("/workspace", c.code, c.cookie)).body
             .demands[0];
           const payment = {

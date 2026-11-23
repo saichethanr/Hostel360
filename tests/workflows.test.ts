@@ -557,8 +557,12 @@ test("approval and year promotion charge the admission fee structure once per ac
   };
   assert.equal((await f.request("/fee-structure", manager, fees)).status, 403);
   assert.equal(
-    (await f.request("/fee-structure", admin, { ...fees, fee_existing_fund: -1 }))
-      .status,
+    (
+      await f.request("/fee-structure", admin, {
+        ...fees,
+        fee_existing_fund: -1,
+      })
+    ).status,
     400,
   );
   assert.equal((await f.request("/fee-structure", admin, fees)).status, 200);
@@ -567,9 +571,16 @@ test("approval and year promotion charge the admission fee structure once per ac
     (await promote({ academic_year: "2026-2028", student_ids: [sid] })).status,
     400,
   );
-  const promoted = await promote({ academic_year: "2026-2027", student_ids: [sid] });
+  const promoted = await promote({
+    academic_year: "2026-2027",
+    student_ids: [sid],
+  });
   assert.equal(promoted.status, 200, JSON.stringify(promoted.body));
-  assert.deepEqual(promoted.body, { promoted: 1, total: 1740000 });
+  assert.deepEqual(promoted.body, {
+    promoted: 1,
+    repeating: 0,
+    total: 1740000,
+  });
   assert.deepEqual(await admissionDues("2026-2027"), [
     ["Establishment", "Admission · Establishment fee", 840000],
     ["Fund", "Admission · Hostel fund", 300000],
@@ -589,6 +600,28 @@ test("approval and year promotion charge the admission fee structure once per ac
     (await promote({ academic_year: "2028-2029", student_ids: [sid] })).status,
     400,
   );
+  // Promotion never moves a student back to an earlier academic year.
+  assert.equal(
+    (
+      await promote({
+        academic_year: "2026-2027",
+        student_ids: [sid],
+        failed_ids: [sid],
+      })
+    ).status,
+    409,
+  );
+  // A Year 3 student who failed repeats Year 3 in the new academic year.
+  assert.deepEqual(
+    (
+      await promote({
+        academic_year: "2028-2029",
+        student_ids: [sid],
+        failed_ids: [sid],
+      })
+    ).body,
+    { promoted: 0, repeating: 1, total: 1740000 },
+  );
   // A fresher's approval adds the mess caution deposit under Fund.
   const fresher = await f.request("/applications", manager, {
     ...a,
@@ -605,21 +638,103 @@ test("approval and year promotion charge the admission fee structure once per ac
   const fresh = (await f.request("/workspace", admin)).body.demands.filter(
     (d: Row) => d.student_id === freshId,
   );
-  assert.deepEqual(
-    fresh.map((d: Row) => [d.description, d.amount]).sort(),
-    [
-      ["Admission · Establishment fee", 840000],
-      ["Admission · Hostel fund", 250000],
-      ["Admission · Management fee", 500000],
-      ["Admission · Mess caution deposit", 400000],
-    ],
-  );
+  assert.deepEqual(fresh.map((d: Row) => [d.description, d.amount]).sort(), [
+    ["Admission · Establishment fee", 840000],
+    ["Admission · Hostel fund", 250000],
+    ["Admission · Management fee", 500000],
+    ["Admission · Mess caution deposit", 400000],
+  ]);
   const w = (await f.request("/workspace", admin)).body;
   const s = w.students.find((s: Student) => s.id === admitted.body.student_id);
   assert.equal(s.course, "B.Com");
   assert.equal(s.address, "Test address");
   assert.equal(s.year, 3);
-  assert.equal(s.academic_year, "2027-2028");
+  assert.equal(s.academic_year, "2028-2029");
+});
+
+test("rooms come from the Admin's blocks with capacity; approved details stay fixed except the room", async (t) => {
+  const f = await fixture(t),
+    admin = await f.login("Admin", 1),
+    manager = await f.login("Manager", 2);
+  // Block A: A1 and A2 for one student each, AC is the common room.
+  const layout = [{ gender: "Women", rooms: 3, capacity: 1 }];
+  assert.equal(
+    (await f.request("/blocks", manager, { blocks: layout })).status,
+    403,
+  );
+  assert.equal(
+    (
+      await f.request("/blocks", admin, {
+        blocks: [{ ...layout[0], rooms: 1 }],
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await f.request("/blocks", admin, { blocks: layout })).status,
+    200,
+  );
+  const apply = async (email: string) =>
+    (
+      await f.request("/applications", manager, {
+        name: email,
+        email,
+        phone: "9876543210",
+        guardian: "Parent",
+        guardian_phone: "9123456780",
+        department: "CS",
+        course: "Diploma",
+        year: 1,
+        academic_year: "2025-2026",
+        address: "Mysuru",
+        admission_type: "Fresher",
+      })
+    ).body.id;
+  const approve = (id: number, room: string) =>
+    f.request(`/applications/${id}/review`, admin, {
+      status: "Approved",
+      room,
+      joined: "2025-01-29",
+    });
+  const first = await apply("one@test.local"),
+    second = await apply("two@test.local");
+  assert.equal((await approve(first, "AC")).status, 400);
+  assert.equal((await approve(first, "Z9")).status, 400);
+  const admitted = await approve(first, "A1");
+  assert.equal(admitted.status, 200);
+  assert.equal((await approve(second, "A1")).status, 409);
+  const sid = admitted.body.student_id;
+  const move = (room: string, extra: Row = {}) =>
+    f.request(`/students/${sid}/update`, admin, {
+      room,
+      status: "Active",
+      reason: "Room change",
+      ...extra,
+    });
+  // Moving works; other details sent along are ignored.
+  assert.equal(
+    (await move("A2", { name: "Changed", phone: "9000000000", year: 3 }))
+      .status,
+    200,
+  );
+  const s = (await f.request("/workspace", admin)).body.students.find(
+    (s: Student) => s.id === sid,
+  );
+  assert.deepEqual(
+    [s.room, s.name, s.phone, s.year],
+    ["A2", "one@test.local", "9876543210", 1],
+  );
+  assert.equal((await approve(second, "A1")).status, 200);
+  assert.equal((await move("A1")).status, 409);
+  // The layout cannot drop a room a resident lives in.
+  assert.equal(
+    (
+      await f.request("/blocks", admin, {
+        blocks: [{ ...layout[0], rooms: 2 }],
+      })
+    ).status,
+    409,
+  );
 });
 
 test("reversal reopens allocations without changing receipt snapshots; adjustment cannot undercut collections", async (t) => {

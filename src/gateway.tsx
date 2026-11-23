@@ -121,6 +121,17 @@ export function OnlinePayments({
         d.student_id === student && d.category === category && d.balance > 0,
     )
     .reduce((sum, d) => sum + d.balance, 0);
+  const isStudent = data.user.role === "Student";
+  const credit = (data.credits || [])
+    .filter((c) => c.student_id === student && c.category === category)
+    .reduce((sum, c) => sum + c.credit, 0);
+  // Students may pay less (the rest stays due) or more (kept as credit).
+  const [amount, setAmount] = useState("");
+  useEffect(
+    () => setAmount(outstanding ? String(outstanding / 100) : ""),
+    [category, outstanding],
+  );
+  const paise = Math.round(Number(amount) * 100);
   const orders = gateway?.orders.filter((o) => o.student_id === student) || [];
   const review = !!gateway?.health?.review_count;
   const pending = orders.some((o) =>
@@ -240,8 +251,8 @@ export function OnlinePayments({
     try {
       await loadCheckout();
       const order = await api<Order>("/gateway/orders", {
-        student_id: student,
         category,
+        amount: paise,
         request_key: crypto.randomUUID(),
       });
       await reload();
@@ -312,11 +323,13 @@ export function OnlinePayments({
       <div className="panel-heading">
         <div>
           <h2>
-            <CreditCard size={20} /> Pay online
+            <CreditCard size={20} />{" "}
+            {isStudent ? "Pay online" : "Online payments"}
           </h2>
           <p>
-            UPI or card · Verified payments automatically update fees and
-            generate receipts.
+            {isStudent
+              ? "UPI or card · Verified payments automatically update fees and generate receipts."
+              : "Students pay online from their own account. Check or reconcile their payments here."}
           </p>
         </div>
         {gateway?.test && (
@@ -377,53 +390,90 @@ export function OnlinePayments({
                 </select>
               </label>
             )}
-            <label className="field">
-              <span>Fee category</span>
-              <select
-                aria-label="Online payment category"
-                disabled={busy}
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setMessage("");
-                }}
-              >
-                {["Mess", "Fund", "Management", "Establishment"].map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-            </label>
-            <div>
-              <small>Outstanding in this category</small>
-              <strong className="online-total">{money(outstanding)}</strong>
-            </div>
-            <button
-              className="button"
-              disabled={
-                busy ||
-                !gateway.enabled ||
-                !student ||
-                outstanding <= 0 ||
-                review ||
-                authorized
-              }
-              onClick={pay}
-            >
-              {busy
-                ? "Processing…"
-                : !gateway.enabled
-                  ? "Payments paused"
-                  : authorized
-                    ? "Awaiting capture"
-                    : outstanding <= 0
-                      ? "No balance due"
-                      : `Pay ${money(outstanding)} · UPI / Card`}
-            </button>
+            {isStudent && (
+              <>
+                <label className="field">
+                  <span>Fee category</span>
+                  <select
+                    aria-label="Online payment category"
+                    disabled={busy}
+                    value={category}
+                    onChange={(e) => {
+                      setCategory(e.target.value);
+                      setMessage("");
+                    }}
+                  >
+                    {["Mess", "Fund", "Management", "Establishment"].map(
+                      (c) => (
+                        <option key={c}>{c}</option>
+                      ),
+                    )}
+                  </select>
+                </label>
+                <div>
+                  <small>Outstanding in this category</small>
+                  <strong className="online-total">{money(outstanding)}</strong>
+                  {credit > 0 && (
+                    <small className="online-credit">
+                      {money(credit)} credit kept for your next dues
+                    </small>
+                  )}
+                </div>
+                <label className="field online-amount">
+                  <span>Amount to pay (₹)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500000"
+                    step="0.01"
+                    aria-label="Amount to pay"
+                    value={amount}
+                    disabled={busy || outstanding <= 0}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </label>
+                <button
+                  className="button"
+                  disabled={
+                    busy ||
+                    !gateway.enabled ||
+                    !student ||
+                    outstanding <= 0 ||
+                    !(paise >= 100 && paise <= 50_000_000) ||
+                    review ||
+                    authorized
+                  }
+                  onClick={pay}
+                >
+                  {busy
+                    ? "Processing…"
+                    : !gateway.enabled
+                      ? "Payments paused"
+                      : authorized
+                        ? "Awaiting capture"
+                        : outstanding <= 0
+                          ? "No balance due"
+                          : `Pay ${money(paise || 0)} · UPI / Card`}
+                </button>
+              </>
+            )}
           </div>
-          <p className="online-hint">
-            <ShieldCheck size={15} /> Card details and UPI approval are handled
-            by Razorpay. Pay one category at a time.
-          </p>
+          {isStudent &&
+            outstanding > 0 &&
+            paise >= 100 &&
+            paise !== outstanding && (
+              <p className="notice" role="status">
+                {paise < outstanding
+                  ? `${money(outstanding - paise)} will stay due in ${category}.`
+                  : `${money(paise - outstanding)} extra will be kept as credit and used for your next ${category} dues.`}
+              </p>
+            )}
+          {isStudent && (
+            <p className="online-hint">
+              <ShieldCheck size={15} /> Card details and UPI approval are
+              handled by Razorpay. Pay one category at a time.
+            </p>
+          )}
           {review && (
             <p className="notice danger" role="alert">
               A payment needs Admin review. Do not pay again. The recorded

@@ -7,6 +7,12 @@ import {
 } from "react";
 import { Moon, Sun } from "lucide-react";
 import {
+  blockLetter,
+  parseBlocks,
+  roomList,
+  type Block,
+} from "../server/rooms";
+import {
   api,
   apiUrl,
   HOSTEL,
@@ -988,8 +994,8 @@ export function Admissions({
               <Form
                 title="Assign room & approve"
                 description={`One step: this adds the student to the register with this room and puts the ${selected.admission_type.toLowerCase()} admission fees (${money(admissionTotal(data.settings, selected.admission_type))}) for ${selected.academic_year} in their dues.`}
+                before={<RoomPicker data={data} />}
                 fields={[
-                  field("room", "Assigned room"),
                   {
                     ...field("joined", "Joining date", "date", data.today),
                     max: data.today,
@@ -1025,11 +1031,284 @@ export function Admissions({
     </>
   );
 }
+// Block, then room, from the hostel's layout, showing beds taken. Without a
+// layout yet, the room is typed in as before.
+export function RoomPicker({
+  data,
+  current = "",
+  studentId = 0,
+}: {
+  data: Workspace;
+  current?: string;
+  studentId?: number;
+}) {
+  const blocks = parseBlocks(data.settings.blocks);
+  const rooms = roomList(blocks);
+  const known = rooms.find((r) => r.room === current);
+  const [block, setBlock] = useState(known?.block || "");
+  const [room, setRoom] = useState(known ? current : "");
+  if (!rooms.length)
+    return (
+      <label className="field">
+        <span>Room</span>
+        <input name="room" required defaultValue={current} maxLength={40} />
+      </label>
+    );
+  const taken = new Map<string, number>();
+  for (const s of data.students)
+    if (s.status === "Active" && s.id !== studentId)
+      taken.set(s.room, (taken.get(s.room) || 0) + 1);
+  return (
+    <>
+      <label className="field">
+        <span>Block</span>
+        <select
+          required
+          aria-label="Block"
+          value={block}
+          onChange={(e) => {
+            setBlock(e.target.value);
+            setRoom("");
+          }}
+        >
+          <option value="">Choose a block</option>
+          {blocks.map((b, i) => (
+            <option key={i} value={blockLetter(i)}>
+              Block {blockLetter(i)} · {b.gender}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Room</span>
+        <select
+          name="room"
+          required
+          aria-label="Room"
+          value={room}
+          disabled={!block}
+          onChange={(e) => setRoom(e.target.value)}
+        >
+          <option value="">
+            {block ? "Choose a room" : "Choose a block first"}
+          </option>
+          {rooms
+            .filter((r) => r.block === block && !r.common)
+            .map((r) => {
+              const used = taken.get(r.room) || 0,
+                full = used >= r.capacity;
+              return (
+                <option key={r.room} value={r.room} disabled={full}>
+                  {r.room} · {used}/{r.capacity} beds taken
+                  {full ? " · full" : ""}
+                </option>
+              );
+            })}
+        </select>
+      </label>
+    </>
+  );
+}
+// Admin layout: number of blocks (lettered A, B, C…), each Women or Men,
+// with rooms per block and students per room. Single rooms can differ.
+export function BlocksSettings({
+  data,
+  onSaved,
+}: {
+  data: Workspace;
+  onSaved: (m: string) => Promise<void>;
+}) {
+  const fresh = (): Block => ({ gender: "Women", rooms: 13, capacity: 8 });
+  const saved = parseBlocks(data.settings.blocks);
+  const [blocks, setBlocks] = useState<Block[]>(
+    saved.length ? saved : [fresh(), fresh(), fresh()],
+  );
+  const [open, setOpen] = useState<number | null>(null);
+  const [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const update = (i: number, change: Partial<Block>) =>
+    setBlocks(blocks.map((b, j) => (j === i ? { ...b, ...change } : b)));
+  const beds = (b: Block, i: number) =>
+    Array.from(
+      { length: Math.max(0, b.rooms - 1) },
+      (_, n) => b.capacities?.[`${blockLetter(i)}${n + 1}`] ?? b.capacity,
+    ).reduce((sum, c) => sum + c, 0);
+  const number = (value: string) => Math.max(0, Math.round(Number(value)));
+  return (
+    <section className="panel fee-structure blocks-settings">
+      <div className="panel-heading">
+        <div>
+          <h2>Blocks & rooms</h2>
+          <p>
+            Blocks are lettered A, B, C… A block with 13 rooms has rooms 1–12
+            for students and a common room (such as AC), which is not allocated.
+            Room allocation offers only these rooms.
+          </p>
+        </div>
+      </div>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError("");
+          try {
+            await api("/blocks", { blocks });
+            await onSaved("Blocks and rooms saved.");
+          } catch (err) {
+            setError(errorText(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label className="field blocks-count">
+          <span>Number of blocks</span>
+          <input
+            type="number"
+            min="1"
+            max="26"
+            required
+            value={blocks.length}
+            onChange={(e) => {
+              const n = Math.min(26, Math.max(1, number(e.target.value)));
+              setBlocks(
+                Array.from({ length: n }, (_, i) => blocks[i] || fresh()),
+              );
+            }}
+          />
+        </label>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Block</th>
+                <th>For</th>
+                <th>Rooms</th>
+                <th>Students per room</th>
+                <th>Rooms created</th>
+                <th>Beds</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blocks.map((b, i) => {
+                const L = blockLetter(i);
+                return (
+                  <tr key={i}>
+                    <td>
+                      <strong>Block {L}</strong>
+                    </td>
+                    <td>
+                      <select
+                        aria-label={`Block ${L} is for`}
+                        value={b.gender}
+                        onChange={(e) =>
+                          update(i, {
+                            gender: e.target.value as Block["gender"],
+                          })
+                        }
+                      >
+                        <option>Women</option>
+                        <option>Men</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="2"
+                        max="100"
+                        required
+                        aria-label={`Rooms in block ${L}`}
+                        value={b.rooms}
+                        onChange={(e) =>
+                          update(i, { rooms: number(e.target.value) })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        required
+                        aria-label={`Students per room in block ${L}`}
+                        value={b.capacity}
+                        onChange={(e) =>
+                          update(i, { capacity: number(e.target.value) })
+                        }
+                      />
+                    </td>
+                    <td>
+                      {b.rooms >= 2
+                        ? `${L}1–${L}${b.rooms - 1} + ${L}C common`
+                        : "—"}
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => setOpen(open === i ? null : i)}
+                      >
+                        {open === i
+                          ? "Hide room sizes"
+                          : "Change single room sizes"}
+                      </button>
+                    </td>
+                    <td>{beds(b, i)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {open !== null && blocks[open] && blocks[open].rooms >= 2 && (
+          <div className="room-sizes">
+            <h3>Block {blockLetter(open)} · students per room</h3>
+            <div>
+              {Array.from({ length: blocks[open].rooms - 1 }, (_, n) => {
+                const room = `${blockLetter(open)}${n + 1}`,
+                  b = blocks[open];
+                return (
+                  <label key={room} className="field">
+                    <span>{room}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      required
+                      value={b.capacities?.[room] ?? b.capacity}
+                      onChange={(e) => {
+                        const value = number(e.target.value);
+                        const capacities = { ...b.capacities };
+                        if (value === b.capacity) delete capacities[room];
+                        else capacities[room] = value;
+                        update(open, { capacities });
+                      }}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <p className="notice">
+          {blocks.filter((b) => b.gender === "Women").length} Women blocks ·{" "}
+          {blocks.filter((b) => b.gender === "Men").length} Men blocks ·{" "}
+          {blocks.reduce((sum, b, i) => sum + beds(b, i), 0)} beds in total.
+        </p>
+        {error && <p className="notice danger">{error}</p>}
+        <button className="button" disabled={busy}>
+          {busy ? "Saving…" : "Save blocks & rooms"}
+        </button>
+      </form>
+    </section>
+  );
+}
 // Admission fees by student type. Fresher Fund includes the refundable mess
 // caution deposit, shown as its own line so the difference is clear.
 const feeLines = (type: "fresher" | "existing") => [
   { key: `fee_${type}_management`, label: "Management" },
-  { key: `fee_${type}_fund`, label: type === "fresher" ? "Hostel fund" : "Fund" },
+  {
+    key: `fee_${type}_fund`,
+    label: type === "fresher" ? "Hostel fund" : "Fund",
+  },
   ...(type === "fresher"
     ? [{ key: "fee_fresher_caution", label: "Mess caution deposit" }]
     : []),
@@ -1120,7 +1399,9 @@ export function FeeStructure({
               <strong className="fee-line">
                 <span>Fund</span>
                 <span>
-                  {money(paise("fee_fresher_fund") + paise("fee_fresher_caution"))}
+                  {money(
+                    paise("fee_fresher_fund") + paise("fee_fresher_caution"),
+                  )}
                 </span>
               </strong>
               {input("fee_fresher_fund", "Hostel fund")}
@@ -1169,7 +1450,9 @@ export function FeeStructure({
     </section>
   );
 }
-// Year-end promotion: Year 1 → 2 and 2 → 3, charging existing-student fees.
+// Year-end promotion in one step: everyone selected moves up a year, except
+// those ticked as failed, who repeat their year. All move to the new academic
+// year and get the existing-student admission fees.
 function Promotion({
   data,
   onSaved,
@@ -1180,18 +1463,31 @@ function Promotion({
   // Promotion starts the academic year after the current one.
   const y = Number(year(data.today).slice(5));
   const [academicYear, setAcademicYear] = useState(`${y}-${y + 1}`);
-  const eligible = data.students.filter(
-    (s) => s.status === "Active" && s.year < 3,
-  );
-  const ready = eligible.filter((s) => s.academic_year !== academicYear);
+  const active = data.students.filter((s) => s.status === "Active");
+  // Students already in this academic year or a later one are done.
+  const done = (s: Student) =>
+    !!s.academic_year && s.academic_year >= academicYear;
+  const ready = active.filter((s) => !done(s));
+  // Everyone in Year 1 and 2 is selected by default, whatever the year typed.
   const [picked, setPicked] = useState<Set<number>>(
-    () => new Set(ready.map((s) => s.id)),
+    () => new Set(active.filter((s) => s.year < 3).map((s) => s.id)),
   );
-  const chosen = ready.filter((s) => picked.has(s.id));
+  const [failed, setFailed] = useState<Set<number>>(() => new Set());
+  // Year 3 is final: those students take part only when they failed.
+  const included = (s: Student) =>
+    picked.has(s.id) && (s.year < 3 || failed.has(s.id));
+  const chosen = ready.filter(included);
+  const repeating = chosen.filter((s) => failed.has(s.id));
   const fee = admissionTotal(data.settings, "Existing");
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const { ask, dialog } = useConfirm();
+  const toggle = (set: Set<number>, id: number, on: boolean) => {
+    const next = new Set(set);
+    if (on) next.add(id);
+    else next.delete(id);
+    return next;
+  };
   return (
     <section className="panel">
       {dialog}
@@ -1199,10 +1495,11 @@ function Promotion({
         <div>
           <h2>Promote students to the next year</h2>
           <p>
-            At the end of the year, move Year 1 students to Year 2 and Year 2
-            to Year 3. Each promoted student gets the existing-student
-            admission fees ({money(fee)}) in their dues for the new academic
-            year.
+            At the end of the year, promote everyone in one step: Year 1 → 2 and
+            Year 2 → 3. Tick <strong>Failed</strong> for students who repeat
+            their year; their academic year changes but their Year stays the
+            same. Everyone selected gets the existing-student admission fees (
+            {money(fee)}) for the new academic year.
           </p>
         </div>
       </div>
@@ -1218,7 +1515,8 @@ function Promotion({
           />
         </label>
         <span>
-          {chosen.length} of {ready.length} selected
+          {chosen.length - repeating.length} promoted · {repeating.length}{" "}
+          repeating
         </span>
       </div>
       <Table
@@ -1226,48 +1524,64 @@ function Promotion({
           <input
             type="checkbox"
             aria-label="Select all"
-            checked={!!ready.length && chosen.length === ready.length}
+            checked={
+              !!chosen.length &&
+              chosen.length ===
+                ready.filter((s) => s.year < 3 || failed.has(s.id)).length
+            }
             onChange={(e) =>
-              setPicked(
-                new Set(e.target.checked ? ready.map((s) => s.id) : []),
-              )
+              setPicked(new Set(e.target.checked ? ready.map((s) => s.id) : []))
             }
           />,
           "Student",
           "Now",
-          "After promotion",
+          "Failed",
+          "After",
         ]}
-        rows={eligible.map((s) => {
-          const done = s.academic_year === academicYear;
+        rows={active.map((s) => {
+          const finished = done(s),
+            isFailed = failed.has(s.id),
+            final = s.year >= 3 && !isFailed;
           return [
             <input
               type="checkbox"
-              aria-label={`Promote ${s.name}`}
-              disabled={done}
-              checked={!done && picked.has(s.id)}
-              onChange={(e) => {
-                const next = new Set(picked);
-                if (e.target.checked) next.add(s.id);
-                else next.delete(s.id);
-                setPicked(next);
-              }}
+              aria-label={`Include ${s.name}`}
+              disabled={finished || final}
+              checked={!finished && included(s)}
+              onChange={(e) =>
+                setPicked(toggle(picked, s.id, e.target.checked))
+              }
             />,
             <>
               <strong>{s.name}</strong>
               <small>{s.code}</small>
             </>,
             `Year ${s.year} · ${s.academic_year || "—"}`,
-            done ? (
-              <span className="badge">Already in {academicYear}</span>
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                aria-label={`${s.name} failed`}
+                disabled={finished}
+                checked={isFailed}
+                onChange={(e) => {
+                  setFailed(toggle(failed, s.id, e.target.checked));
+                  if (e.target.checked) setPicked(toggle(picked, s.id, true));
+                }}
+              />{" "}
+              Failed
+            </label>,
+            finished ? (
+              <span className="badge">Already in {s.academic_year}</span>
+            ) : final ? (
+              <span className="badge">Final year</span>
+            ) : !included(s) ? (
+              "Not included"
             ) : (
-              `Year ${s.year + 1} · ${academicYear} · ${money(fee)} due`
+              `Year ${isFailed ? s.year : s.year + 1}${isFailed ? " (repeat)" : ""} · ${academicYear} · ${money(fee)} due`
             ),
           ];
         })}
       />
-      <p className="notice">
-        Year 3 students are in their final year and are not listed.
-      </p>
       {error && <p className="notice danger">{error}</p>}
       <button
         className="button"
@@ -1276,23 +1590,25 @@ function Promotion({
           setError("");
           if (
             !(await ask({
-              title: `Promote ${chosen.length} student${chosen.length === 1 ? "" : "s"} to ${academicYear}?`,
-              body: `This adds ${money(fee * chosen.length)} in admission fees to their dues. It cannot be undone.`,
+              title: `Move ${chosen.length} student${chosen.length === 1 ? "" : "s"} to ${academicYear}?`,
+              body: `${chosen.length - repeating.length} promoted to the next year and ${repeating.length} repeating their year. This adds ${money(fee * chosen.length)} in admission fees to their dues. It cannot be undone.`,
               confirm: "Promote",
             }))
           )
             return;
           setBusy(true);
           try {
-            const r = await api<{ promoted: number; total: number }>(
-              "/students/promote",
-              {
-                academic_year: academicYear,
-                student_ids: chosen.map((s) => s.id),
-              },
-            );
+            const r = await api<{
+              promoted: number;
+              repeating: number;
+              total: number;
+            }>("/students/promote", {
+              academic_year: academicYear,
+              student_ids: chosen.map((s) => s.id),
+              failed_ids: repeating.map((s) => s.id),
+            });
             await onSaved(
-              `${r.promoted} students promoted. ${money(r.total)} added to their dues.`,
+              `${r.promoted} promoted, ${r.repeating} repeating. ${money(r.total)} added to their dues.`,
             );
           } catch (err) {
             setError(errorText(err));
@@ -1500,8 +1816,8 @@ function Accounts({
             key={`approve-${selected.id}`}
             title="Assign room & approve"
             description="One step: this adds the student to the register with this room and gives them access."
+            before={<RoomPicker data={data} />}
             fields={[
-              field("room", "Room"),
               {
                 ...field("joined", "Joining date", "date", data.today),
                 max: data.today,
@@ -2161,39 +2477,15 @@ export function StudentTools({
       </details>
       {data.user.role !== "Student" && (
         <button className="button secondary" onClick={() => setEdit(!edit)}>
-          {edit ? "Cancel editing" : "Edit profile / move room"}
+          {edit ? "Cancel" : "Move room / close admission"}
         </button>
       )}
       {edit && (
         <Form
-          title="Update student record"
+          title="Move room or close admission"
+          description="Student details are fixed once approved. Only the room can change; Year and academic year change through Promote students."
+          before={<RoomPicker data={data} current={s.room} studentId={s.id} />}
           fields={[
-            field("name", "Full name", "text", s.name),
-            field("department", "Department", "text", s.department),
-            { ...field("year", "Year", "number", s.year), min: 1, max: 6 },
-            field("room", "Room", "text", s.room),
-            field("phone", "Phone", "tel", s.phone),
-            field("guardian", "Parent name", "text", s.guardian),
-            field("course", "Course", "text", s.course),
-            field(
-              "academic_year",
-              "Academic year",
-              "text",
-              s.academic_year || year(data.today),
-            ),
-            {
-              ...field("address", "Address", "textarea", s.address),
-              optional: true,
-            },
-            {
-              ...field(
-                "guardian_phone",
-                "Parent phone",
-                "tel",
-                s.guardian_phone,
-              ),
-              optional: true,
-            },
             {
               name: "status",
               label: "Status",
@@ -2216,12 +2508,9 @@ export function StudentTools({
             },
             field("reason", "Reason for this change", "textarea"),
           ]}
-          submit="Save student changes"
+          submit="Save changes"
           onSubmit={async (v) => {
-            await api(`/students/${s.id}/update`, {
-              ...v,
-              year: Number(v.year),
-            });
+            await api(`/students/${s.id}/update`, v);
             setEdit(false);
             await onSaved("Student record updated; history preserved.");
           }}

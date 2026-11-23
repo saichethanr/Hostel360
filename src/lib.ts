@@ -55,6 +55,8 @@ export type Receipt = Payment & {
   hostel: string;
   gateway?: { charged: number; refunded_before_receipt: number };
   allocations: { period: string; description: string; amount: number }[];
+  // Paid beyond the dues; kept as credit for the next dues.
+  advance?: number;
 };
 export type Attendance = { student_id: number; status: string };
 export type Preview = {
@@ -98,6 +100,8 @@ export type Workspace = {
   students: Student[];
   demands: Demand[];
   payments: Payment[];
+  // Online payments beyond the dues, kept per category for the next dues.
+  credits: { id: number; student_id: number; category: string; credit: number }[];
   attendance: Attendance[];
   audit: {
     id: number;

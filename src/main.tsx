@@ -74,6 +74,8 @@ import {
   ThemeToggle,
   MembershipStatus,
   FeeStructure,
+  BlocksSettings,
+  RoomPicker,
 } from "./operations";
 import "./styles.css";
 import "./dark.css";
@@ -758,6 +760,7 @@ function App() {
       )}
       {addStudent && (
         <StudentForm
+          data={data}
           today={data.today}
           onClose={() => setAddStudent(false)}
           onSaved={async () => {
@@ -969,7 +972,13 @@ function Dashboard({
   const present = data.attendance.filter((a) => a.status === "Present").length;
   const absent = data.attendance.filter((a) => a.status === "Absent").length;
   const leave = data.attendance.filter((a) => a.status === "Leave").length;
-  const [chartType, setChartType] = useState("Mess");
+  // Open on Mess, or on the first category that has dues.
+  const [chartType, setChartType] = useState(
+    () =>
+      ["Mess", "Management", "Fund", "Establishment"].find((c) =>
+        data.demands.some((d) => d.category === c),
+      ) || "Mess",
+  );
   return (
     <>
       <div className="overview-banner">
@@ -1051,7 +1060,11 @@ function Dashboard({
           <div className="panel-heading">
             <div>
               <h2>Demand & collections</h2>
-              <p>A month-by-month view of your mess accounts</p>
+              <p>
+                {chartType === "Mess"
+                  ? "A month-by-month view of your mess accounts"
+                  : `Admission dues by academic year · ${chartType}`}
+              </p>
             </div>
             <select
               aria-label="Chart category"
@@ -1072,7 +1085,11 @@ function Dashboard({
               <i className="collection-key" />
               Allocated collection
             </span>
-            <small>Last 6 billing months</small>
+            <small>
+              {chartType === "Mess"
+                ? "Last 6 billing months"
+                : "Last 6 academic years"}
+            </small>
           </div>
           <CollectionChart data={data} category={chartType} />
           <div className="chart-foot">
@@ -1268,17 +1285,34 @@ function CollectionChart({
   data: Workspace;
   category: string;
 }) {
-  const end =
-    data.demands
-      .map((d) => d.period)
-      .filter((p) => p.length === 7) // months only, not academic years
-      .sort()
-      .at(-1) || data.today.slice(0, 7);
-  const months = Array.from({ length: 6 }, (_, i) =>
-    new Date(Date.UTC(Number(end.slice(0, 4)), Number(end.slice(5)) - 6 + i, 1))
-      .toISOString()
-      .slice(0, 7),
-  );
+  // Mess is billed monthly; the other categories once per academic year.
+  const monthly = category === "Mess";
+  const periods = data.demands
+    .filter((d) => d.category === category)
+    .map((d) => d.period)
+    .sort();
+  let months: string[];
+  if (monthly) {
+    const end = periods.at(-1) || data.today.slice(0, 7);
+    months = Array.from({ length: 6 }, (_, i) =>
+      new Date(
+        Date.UTC(Number(end.slice(0, 4)), Number(end.slice(5)) - 6 + i, 1),
+      )
+        .toISOString()
+        .slice(0, 7),
+    );
+  } else {
+    const y = data.today.slice(5, 7) < "07" ? -1 : 0;
+    const end = Number(
+      (periods.at(-1) || `${Number(data.today.slice(0, 4)) + y}`).slice(0, 4),
+    );
+    months = Array.from(
+      { length: 6 },
+      (_, i) => `${end - 5 + i}-${end - 4 + i}`,
+    );
+  }
+  const label = (m: string) =>
+    monthly ? monthName(m, true) : `${m.slice(2, 5)}${m.slice(7)}`;
   const amounts = months.map((month) => {
     const ds = data.demands.filter(
       (d) => d.period === month && d.category === category,
@@ -1296,7 +1330,10 @@ function CollectionChart({
         role="img"
         aria-label={`${category} demand and allocated collections by billing month. ${months.map((m, i) => `${monthName(m)}: demand ${money(amounts[i].demand)}, collected ${money(amounts[i].collection)}`).join(". ")}`}
       >
-        <title>Monthly demand and collection comparison</title>
+        <title>
+          {monthly ? "Monthly" : "Academic year"} demand and collection
+          comparison
+        </title>
         {[0, 1, 2, 3].map((n) => (
           <g key={n}>
             <text x="0" y={17 + n * 49} className="axis-label">
@@ -1344,7 +1381,7 @@ function CollectionChart({
               textAnchor="middle"
               className="axis-label"
             >
-              {monthName(m, true)}
+              {label(m)}
             </text>
           </g>
         ))}
@@ -1544,10 +1581,12 @@ function Students({
   );
 }
 function StudentForm({
+  data,
   today,
   onClose,
   onSaved,
 }: {
+  data: Workspace;
   today: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -1607,14 +1646,7 @@ function StudentForm({
               ))}
             </select>
           </Field>
-          <Field label="Room">
-            <input
-              name="room"
-              required
-              placeholder="e.g. A-101"
-              maxLength={120}
-            />
-          </Field>
+          <RoomPicker data={data} />
           <Field label="Phone number">
             <input
               name="phone"
@@ -2878,6 +2910,13 @@ function ReceiptModal({
                 <td className="amount right">{money(a.amount)}</td>
               </tr>
             ))}
+            {!!r.advance && (
+              <tr>
+                <td>Advance</td>
+                <td>Credit kept for the next {r.category} dues</td>
+                <td className="amount right">{money(r.advance)}</td>
+              </tr>
+            )}
           </tbody>
         </table>
         <div className="receipt-total">
@@ -3201,6 +3240,7 @@ function SettingsPage({
           data.
         </div>
       </section>
+      <BlocksSettings data={data} onSaved={onSaved} />
       <FeeStructure data={data} onSaved={onSaved} />
     </div>
   );

@@ -4,6 +4,7 @@ import ExcelJS from "exceljs";
 import { hashPassword } from "./db.js";
 import { archive, saveBackup } from "./backup.js";
 import { type Store, type Row } from "./store.js";
+import { blockLetter, parseBlocks, roomList } from "./rooms.js";
 import {
   ensure,
   today,
@@ -29,6 +30,7 @@ type Services = {
   demands: (id?: number) => Promise<Row[]>;
   payments: (id?: number) => Promise<Row[]>;
   settings: () => Promise<Record<string, string>>;
+  applyCredit: () => Promise<void>;
 };
 // Hostel details a student gives once, either with their join request or
 // later from My application. Staff decide on it with a room in one step.
@@ -111,7 +113,9 @@ const feeLines = (type: string) =>
   [
     ["Management", "Management fee", "management"],
     ["Fund", "Hostel fund", "fund"],
-    ...(type === "Fresher" ? [["Fund", "Mess caution deposit", "caution"]] : []),
+    ...(type === "Fresher"
+      ? [["Fund", "Mess caution deposit", "caution"]]
+      : []),
     ["Establishment", "Establishment fee", "establishment"],
   ].map(([category, label, key]) => ({
     category,
@@ -120,7 +124,7 @@ const feeLines = (type: string) =>
   }));
 export function registerOperations(
   app: Express,
-  { db, audit, demands, payments, settings }: Services,
+  { db, audit, demands, payments, settings, applyCredit }: Services,
 ) {
   // Adds one due per admission fee line; returns the total charged.
   async function chargeAdmission(
@@ -156,7 +160,25 @@ export function registerOperations(
           now(),
         ]),
       );
+    await applyCredit();
     return rows.reduce((sum, r) => sum + r.amount, 0);
+  }
+  // With blocks set up, a student goes only to a real room with a free bed.
+  async function checkRoom(room: string, studentId = 0) {
+    const rooms = roomList(parseBlocks((await settings()).blocks));
+    if (!rooms.length) return;
+    const r = rooms.find((r) => r.room === room && !r.common);
+    ensure(r, "Choose a block and room from the list.");
+    const { count } = await db.get(
+      "SELECT COUNT(*) AS count FROM students WHERE room=? AND status='Active' AND id<>?",
+      room,
+      studentId,
+    );
+    ensure(
+      count < r.capacity,
+      `Room ${room} is full (${r.capacity} students).`,
+      409,
+    );
   }
   function studentInput(b: Row) {
     for (const key of ["name", "department", "room", "phone", "guardian"])
@@ -195,6 +217,7 @@ export function registerOperations(
   }
   async function addStudent(b: Row, actor: { name: string }) {
     studentInput(b);
+    await checkRoom(b.room.trim());
     const [next] = await db.studentIds(1);
     const code = `H360-${String(next).padStart(4, "0")}`;
     // The roll column stays unique; without a college ID it holds the code.
@@ -249,14 +272,13 @@ export function registerOperations(
         Number(req.params.id),
       );
       ensure(s, "Student not found.", 404);
+      // After approval only the room changes here; the student's details
+      // stay as approved. Year and academic year move only by promotion.
       const updated = {
         ...s,
-        ...b,
-        joined: s.joined,
-        roll: s.roll,
-        admission_type: s.admission_type,
+        room: typeof b.room === "string" ? b.room.trim() : s.room,
       };
-      studentInput(updated);
+      ensure(text(updated.room, 40), "Choose a room.");
       ensure(
         ["Active", "Left", "Graduated"].includes(b.status),
         "Select a valid status.",
@@ -287,6 +309,7 @@ export function registerOperations(
           s.status === "Active" && b.status === "Active",
           "Only active residents can move rooms.",
         );
+        await checkRoom(updated.room, s.id);
         await db.run(
           "UPDATE room_history SET ended=? WHERE student_id=? AND ended IS NULL",
           today(),
@@ -301,17 +324,8 @@ export function registerOperations(
         );
       }
       await db.run(
-        "UPDATE students SET name=?,department=?,year=?,room=?,phone=?,guardian=?,course=?,academic_year=?,address=?,guardian_phone=?,status=?,exited=?,exit_reason=? WHERE id=?",
-        updated.name,
-        updated.department,
-        updated.year,
+        "UPDATE students SET room=?,status=?,exited=?,exit_reason=? WHERE id=?",
         updated.room,
-        updated.phone,
-        updated.guardian,
-        updated.course,
-        updated.academic_year,
-        updated.address,
-        updated.guardian_phone,
         b.status,
         exited,
         b.status === "Active" ? s.exit_reason : b.reason,
@@ -402,12 +416,7 @@ export function registerOperations(
         ensure(text(b.reason, 500), "Give a reason for rejection.");
       // Approval puts the admission fees for this student type in their dues.
       if (sid)
-        await chargeAdmission(
-          sid,
-          a.admission_type,
-          a.academic_year,
-          me(res),
-        );
+        await chargeAdmission(sid, a.admission_type, a.academic_year, me(res));
       if (sid && a.user_id)
         await db.run(
           "UPDATE users SET student_id=? WHERE id=?",
@@ -438,6 +447,87 @@ export function registerOperations(
       return { student_id: sid };
     });
     res.json(result);
+  });
+  // Blocks A, B, C… with their gender, rooms and beds per room. A change may
+  // not remove a room or bed that a current resident occupies.
+  app.post("/api/blocks", async (req, res) => {
+    admin(res);
+    const blocks = req.body.blocks;
+    ensure(
+      Array.isArray(blocks) &&
+        blocks.length >= 1 &&
+        blocks.length <= 26 &&
+        blocks.every(
+          (b: Row, i: number) =>
+            b &&
+            ["Women", "Men"].includes(b.gender) &&
+            Number.isInteger(b.rooms) &&
+            b.rooms >= 2 &&
+            b.rooms <= 100 &&
+            Number.isInteger(b.capacity) &&
+            b.capacity >= 1 &&
+            b.capacity <= 50 &&
+            (b.capacities === undefined ||
+              (typeof b.capacities === "object" &&
+                Object.entries(b.capacities).every(
+                  ([room, c]) =>
+                    new RegExp(`^${blockLetter(i)}\\d+$`).test(room) &&
+                    Number(room.slice(1)) < b.rooms &&
+                    Number.isInteger(c) &&
+                    (c as number) >= 1 &&
+                    (c as number) <= 50,
+                ))),
+        ),
+      "Each block needs Women or Men, 2 to 100 rooms and 1 to 50 students per room.",
+    );
+    const clean = blocks.map((b: Row) => ({
+      gender: b.gender,
+      rooms: b.rooms,
+      capacity: b.capacity,
+      ...(b.capacities && Object.keys(b.capacities).length
+        ? { capacities: b.capacities }
+        : {}),
+    }));
+    await db.transaction(async () => {
+      const rooms = new Map(
+        roomList(clean)
+          .filter((r) => !r.common)
+          .map((r) => [r.room, r.capacity]),
+      );
+      const occupied = await db.all(
+        "SELECT room,COUNT(*) AS count FROM students WHERE status='Active' GROUP BY room",
+      );
+      const conflicts = occupied.filter(
+        (o) => rooms.size && (rooms.get(o.room) ?? 0) < o.count,
+      );
+      // Rooms recorded before blocks existed are left alone.
+      const known = new Set(
+        roomList(parseBlocks((await settings()).blocks)).map((r) => r.room),
+      );
+      const lost = conflicts.filter(
+        (o) => rooms.has(o.room) || known.has(o.room),
+      );
+      ensure(
+        !lost.length,
+        `These rooms have more residents than the new layout allows: ${lost.map((o) => `${o.room} (${o.count})`).join(", ")}. Move residents first.`,
+        409,
+      );
+      await db.run(
+        `INSERT INTO settings (key,value) VALUES ('blocks',?) ON CONFLICT(${db.key("key")}) DO UPDATE SET value=excluded.value`,
+        JSON.stringify(clean),
+      );
+      await audit(
+        me(res),
+        "Blocks and rooms updated",
+        clean
+          .map(
+            (b: Row, i: number) =>
+              `${blockLetter(i)}: ${b.gender}, ${b.rooms} rooms × ${b.capacity}`,
+          )
+          .join(" · "),
+      );
+    });
+    res.json({ ok: true });
   });
   // The Admin's fee structure: saved amounts apply to later approvals and
   // promotions only; dues already issued never change.
@@ -475,7 +565,8 @@ export function registerOperations(
     const b = req.body;
     ensure(
       /^20\d{2}-20\d{2}$/.test(b.academic_year) &&
-        Number(b.academic_year.slice(5)) === Number(b.academic_year.slice(0, 4)) + 1,
+        Number(b.academic_year.slice(5)) ===
+          Number(b.academic_year.slice(0, 4)) + 1,
       "Enter the new academic year as YYYY-YYYY, such as 2027-2028.",
     );
     ensure(
@@ -486,23 +577,32 @@ export function registerOperations(
         new Set(b.student_ids).size === b.student_ids.length,
       "Choose the students to promote.",
     );
+    // Students who failed repeat their year in the new academic year.
+    const failed = new Set<number>(
+      Array.isArray(b.failed_ids) ? b.failed_ids : [],
+    );
+    ensure(
+      [...failed].every((id) => b.student_ids.includes(id)),
+      "Failed students must be among the selected students.",
+    );
     const result = await db.transaction(async () => {
       let total = 0;
       for (const id of b.student_ids) {
         const s = await db.get("SELECT * FROM students WHERE id=?", id);
         ensure(s && s.status === "Active", "Choose active students only.");
         ensure(
-          s.year < 3,
+          failed.has(id) || s.year < 3,
           `${s.name} is already in Year ${s.year}, the final year.`,
         );
+        // Students only move forward to a later academic year.
         ensure(
-          s.academic_year !== b.academic_year,
-          `${s.name} is already in ${b.academic_year}.`,
+          !s.academic_year || s.academic_year < b.academic_year,
+          `${s.name} is already in ${s.academic_year}.`,
           409,
         );
         await db.run(
           "UPDATE students SET year=?,academic_year=?,admission_type='Existing' WHERE id=?",
-          s.year + 1,
+          failed.has(id) ? s.year : s.year + 1,
           b.academic_year,
           id,
         );
@@ -516,9 +616,13 @@ export function registerOperations(
       await audit(
         me(res),
         "Students promoted",
-        `${b.student_ids.length} students to ${b.academic_year} · ${total / 100} INR admission fees`,
+        `${b.student_ids.length - failed.size} promoted, ${failed.size} repeating their year, to ${b.academic_year} · ${total / 100} INR admission fees`,
       );
-      return { promoted: b.student_ids.length, total };
+      return {
+        promoted: b.student_ids.length - failed.size,
+        repeating: failed.size,
+        total,
+      };
     });
     res.json(result);
   });
@@ -885,6 +989,7 @@ export function registerOperations(
             now(),
           ]),
         );
+        await applyCredit();
       }
       await db.run(
         "UPDATE import_batches SET committed_at=? WHERE id=?",

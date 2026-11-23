@@ -240,7 +240,6 @@ test(
             student_id: u.student_id,
             category,
             request_key: randomUUID(),
-            amount: 1,
           },
           201,
         )
@@ -453,7 +452,7 @@ test(
       },
     );
     await t.test(
-      "late capture after an offline payment is recorded for review without overcrediting",
+      "late capture after an offline payment settles the rest and keeps the excess as credit",
       async () => {
         const order = await create(student, "Fund");
         const demand = (
@@ -479,20 +478,18 @@ test(
         const checked = (
           await request(`/gateway/orders/${order.id}/check`, a, student, {})
         ).data;
-        assert.equal(checked.status, "review");
+        // The offline payment already covered 1000; the rest settles the due
+        // and the excess 1000 stays as the student's Fund credit.
+        assert.equal(checked.status, "paid");
         assert.equal(checked.provider_payment_id, p.id);
-        assert.equal(checked.payment_id, null);
-        const workspace = (await request("/workspace", a, student)).data;
+        let workspace = (await request("/workspace", a, student)).data;
         assert.equal(
           workspace.demands.find((d: Row) => d.id === demand.id).balance,
-          3200,
+          0,
         );
-        await request(
-          "/gateway/orders",
-          a,
-          student,
-          { category: "Fund", request_key: randomUUID() },
-          409,
+        assert.deepEqual(
+          workspace.credits.map((c: Row) => [c.category, c.credit]),
+          [["Fund", 1000]],
         );
         refund(p, p.amount);
         assert.equal(await webhook(p, "refund.processed"), 200);
@@ -501,6 +498,13 @@ test(
             .data.status,
           "refunded",
         );
+        // A full refund removes both the payment and the credit.
+        workspace = (await request("/workspace", a, student)).data;
+        assert.equal(
+          workspace.demands.find((d: Row) => d.id === demand.id).balance,
+          3200,
+        );
+        assert.deepEqual(workspace.credits, []);
       },
     );
     await t.test(
@@ -690,81 +694,49 @@ test(
           ).status,
           "superseded",
         );
+        // A superseded checkout paid late still counts: 3000 settles the due
+        // and the 200 excess becomes Fund credit, with no Admin review.
         const late = payment(recovered);
         assert.equal(await webhook(late), 200);
-        assert.equal(
-          (
-            await request(
-              `/gateway/orders/${recovered.id}/check`,
-              a,
-              student,
-              {},
-            )
-          ).data.status,
-          "review",
-        );
-        await request(
-          `/gateway/orders/${recovered.id}/reconcile`,
-          a,
-          manager,
-          { reason: "Not allowed" },
-          403,
-        );
-        await request(
-          `/gateway/orders/${recovered.id}/reconcile`,
-          a,
-          student,
-          { reason: "Not allowed" },
-          403,
-        );
-        await request(
-          `/gateway/orders/${recovered.id}/reconcile`,
-          b,
-          b.users[0],
-          { reason: "Wrong hostel" },
-          404,
-        );
-        await request(
-          `/gateway/orders/${recovered.id}/reconcile`,
-          a,
-          admin,
-          { reason: "" },
-          400,
-        );
-        await request(
-          `/gateway/orders/${recovered.id}/reconcile`,
-          a,
-          admin,
-          { reason: "Excess not yet refunded" },
-          409,
-        );
+        const settled = (
+          await request(`/gateway/orders/${recovered.id}/check`, a, student, {})
+        ).data;
+        assert.equal(settled.status, "paid");
+        const fund = async () => {
+          const w = (await request("/workspace", a, student)).data;
+          return {
+            balance: w.demands.find((d: Row) => d.id === demand.id).balance,
+            credit: w.credits
+              .filter((c: Row) => c.category === "Fund")
+              .reduce((sum: number, c: Row) => sum + c.credit, 0),
+          };
+        };
+        assert.deepEqual(await fund(), { balance: 0, credit: 200 });
+        const receipt = (
+          await request(`/receipts/${settled.payment_id}`, a, student)
+        ).data;
+        assert.equal(receipt.amount, 3200);
+        // Reconciliation stays Admin-only and only for unallocated payments.
+        for (const [community, user, status] of [
+          [a, manager, 403],
+          [a, student, 403],
+          [b, b.users[0], 404],
+          [a, admin, 409],
+        ] as const)
+          await request(
+            `/gateway/orders/${recovered.id}/reconcile`,
+            community,
+            user,
+            { reason: "Check" },
+            status,
+          );
+        // A refund returns the credit first, then reopens the latest fees.
         refund(late, 200);
         assert.equal(await webhook(late, "refund.processed"), 200);
-        const reconciled = (
-          await request(`/gateway/orders/${recovered.id}/reconcile`, a, admin, {
-            reason: "Refunded ₹2 excess; allocate remaining ₹30",
-          })
-        ).data;
-        assert.equal(reconciled.status, "partially_refunded");
-        const receipt = (
-          await request(`/receipts/${reconciled.payment_id}`, a, student)
-        ).data;
-        assert.equal(receipt.amount, 3000);
-        assert.equal(receipt.gateway.refunded_before_receipt, 200);
-        assert.equal(
-          (await request("/workspace", a, student)).data.demands.find(
-            (d: Row) => d.id === demand.id,
-          ).balance,
-          0,
-        );
-        refund(late, 500);
+        assert.deepEqual(await fund(), { balance: 0, credit: 0 });
+        refund(late, 700);
         assert.equal(await webhook(late, "refund.processed"), 200);
-        assert.equal(
-          (await request("/workspace", a, student)).data.demands.find(
-            (d: Row) => d.id === demand.id,
-          ).balance,
-          500,
-        );
+        assert.deepEqual(await fund(), { balance: 700, credit: 0 });
       },
     );
     await t.test(
@@ -966,6 +938,89 @@ test(
             ),
           ),
         );
+      },
+    );
+    await t.test(
+      "students choose the amount: less stays due, more is credit that settles the next dues; staff cannot check out",
+      async () => {
+        await request(
+          "/gateway/orders",
+          a,
+          admin,
+          { student_id: student.student_id, category: "Mess", request_key: randomUUID() },
+          403,
+        );
+        // Earlier subtests leave a payment in review, which blocks checkout.
+        await db.inCommunity(a.id, () =>
+          db.run(
+            "UPDATE gateway_orders SET status='refunded' WHERE status='review'",
+          ),
+        );
+        // One Management due of ₹30 from the fee structure via promotion.
+        await request("/fee-structure", a, admin, {
+          fee_fresher_management: 0,
+          fee_fresher_fund: 0,
+          fee_fresher_caution: 0,
+          fee_fresher_establishment: 0,
+          fee_existing_management: 3000,
+          fee_existing_fund: 0,
+          fee_existing_establishment: 0,
+        });
+        const promote = (academic_year: string) =>
+          request("/students/promote", a, admin, {
+            academic_year,
+            student_ids: [student.student_id],
+          });
+        await promote("2026-2027");
+        const management = async () => {
+          const w = (await request("/workspace", a, student)).data;
+          return {
+            balance: w.demands
+              .filter((d: Row) => d.category === "Management")
+              .reduce((sum: number, d: Row) => sum + d.balance, 0),
+            credit: w.credits
+              .filter((c: Row) => c.category === "Management")
+              .reduce((sum: number, c: Row) => sum + c.credit, 0),
+          };
+        };
+        assert.deepEqual(await management(), { balance: 3000, credit: 0 });
+        const pay = async (amount: number) => {
+          const o = (
+            await request(
+              "/gateway/orders",
+              a,
+              student,
+              { category: "Management", request_key: randomUUID(), amount },
+              201,
+            )
+          ).data;
+          assert.equal(o.amount, amount);
+          assert.equal(await webhook(payment(o)), 200);
+          const checked = (
+            await request(`/gateway/orders/${o.id}/check`, a, student, {})
+          ).data;
+          assert.equal(checked.status, "paid");
+          return checked;
+        };
+        await request(
+          "/gateway/orders",
+          a,
+          student,
+          { category: "Management", request_key: randomUUID(), amount: 50 },
+          400,
+        );
+        await pay(1000);
+        assert.deepEqual(await management(), { balance: 2000, credit: 0 });
+        const over = await pay(2500);
+        assert.deepEqual(await management(), { balance: 0, credit: 500 });
+        const receipt = (
+          await request(`/receipts/${over.payment_id}`, a, student)
+        ).data;
+        assert.equal(receipt.amount, 2500);
+        assert.equal(receipt.advance, 500);
+        // The next year's due is raised and the credit settles part of it.
+        await promote("2027-2028");
+        assert.deepEqual(await management(), { balance: 2500, credit: 0 });
       },
     );
   },

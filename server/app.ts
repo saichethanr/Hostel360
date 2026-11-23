@@ -20,6 +20,7 @@ import {
   staff,
   admin,
   supabase,
+  categories,
 } from "./http.js";
 import { feeDefaults, registerOperations } from "./operations.js";
 import { saveBackup } from "./backup.js";
@@ -62,11 +63,42 @@ export function createApp(
     );
   const payments = async (sid?: number) =>
     db.all(
-      `SELECT p.id,p.student_id,p.amount,${db.communities ? "(SELECT COALESCE(SUM(a.refunded_amount),0) FROM allocations a WHERE a.payment_id=p.id)" : "0"} AS refunded_amount,p.date,p.mode,p.reference,p.category,p.receipt,p.reversed_at,p.reversal_reason,s.name,s.code,CASE WHEN p.idempotency_key LIKE 'gateway-%' THEN 'Razorpay online payment' ELSE u.name END AS received_name
+      `SELECT p.id,p.student_id,p.amount,${refundedSql} AS refunded_amount,p.date,p.mode,p.reference,p.category,p.receipt,p.reversed_at,p.reversal_reason,s.name,s.code,CASE WHEN p.idempotency_key LIKE 'gateway-%' THEN 'Razorpay online payment' ELSE u.name END AS received_name
     FROM payments p JOIN students s ON s.id=p.student_id JOIN users u ON u.id=p.received_by
     ${sid !== undefined ? "WHERE p.student_id=?" : ""} ORDER BY p.date DESC,p.id DESC`,
       ...(sid !== undefined ? [sid] : []),
     );
+  // Online payments beyond a student's dues stay with them as credit, per fee
+  // category (each category has its own receipts), net of any refund.
+  const refundedSql = db.communities
+    ? "COALESCE((SELECT GREATEST(0,(SELECT COALESCE(SUM(r.amount),0) FROM gateway_refunds r WHERE r.order_id=o.id)-o.refund_baseline) FROM gateway_orders o WHERE o.payment_id=p.id),(SELECT COALESCE(SUM(a.refunded_amount),0) FROM allocations a WHERE a.payment_id=p.id))"
+    : "0";
+  const credits = async (sid?: number) =>
+    db.all(
+      `SELECT * FROM (SELECT p.id,p.student_id,p.category,p.amount-(SELECT COALESCE(SUM(a.amount${db.communities ? "-a.refunded_amount" : ""}),0) FROM allocations a WHERE a.payment_id=p.id)-${refundedSql} AS credit
+      FROM payments p WHERE p.reversed_at IS NULL ${sid !== undefined ? "AND p.student_id=?" : ""}) c WHERE credit>0 ORDER BY id`,
+      ...(sid !== undefined ? [sid] : []),
+    );
+  // Runs after new dues are raised: credit settles them, oldest first.
+  const applyCredit = async () => {
+    for (const c of await credits()) {
+      let left = c.credit;
+      const open = (await demands(c.student_id))
+        .filter((d) => d.category === c.category && d.balance > 0)
+        .sort((a, b) => a.period.localeCompare(b.period) || a.id - b.id);
+      for (const d of open) {
+        const amount = Math.min(left, d.balance);
+        if (amount <= 0) break;
+        left -= amount;
+        await db.run(
+          "INSERT INTO allocations (payment_id,demand_id,amount) VALUES (?,?,?) ON CONFLICT(payment_id,demand_id) DO UPDATE SET amount=allocations.amount+excluded.amount",
+          c.id,
+          d.id,
+          amount,
+        );
+      }
+    }
+  };
   const gateway = new Gateway(
     db,
     { demands, record: (body, actor) => recordPayment(body, actor) },
@@ -303,7 +335,7 @@ export function createApp(
   app.get("/api/workspace", async (_req, res) => {
     const user = me(res),
       sid = user.role === "Student" ? (user.student_id ?? -1) : undefined;
-    const [s, students, ds, ps, attendance, events] = await Promise.all([
+    const [s, students, ds, ps, attendance, events, cs] = await Promise.all([
       settings(),
       db.all(
         `SELECT * FROM students ${sid !== undefined ? "WHERE id=?" : ""} ORDER BY name`,
@@ -319,6 +351,7 @@ export function createApp(
       sid !== undefined
         ? []
         : db.all("SELECT * FROM audit ORDER BY id DESC LIMIT 100"),
+      credits(sid),
     ]);
     res.json({
       user,
@@ -328,6 +361,7 @@ export function createApp(
       students,
       demands: ds,
       payments: ps,
+      credits: cs,
       attendance,
       audit: events,
       // Admins see join requests waiting for a decision on every screen.
@@ -546,6 +580,7 @@ export function createApp(
             now(),
           ]),
       );
+      await applyCredit();
       await db.run(
         "INSERT INTO billing_periods (period,snapshot,created_at) VALUES (?,?,?)",
         p.period,
@@ -647,10 +682,16 @@ export function createApp(
         category = d.category;
         total += a.amount;
       }
+      // Only a verified online payment may exceed the dues; the excess is
+      // the student's credit in this category.
+      const advance = b.amount - total;
       ensure(
-        total === b.amount,
+        advance === 0 ||
+          (advance > 0 && b.idempotency_key.startsWith("gateway-")),
         "Allocated total must equal the payment amount.",
       );
+      category = category || b.category;
+      ensure(categories.includes(category), "Choose a fee category.");
       const seq = await db.get(
         `INSERT INTO receipt_sequences (category,value) VALUES (?,1) ON CONFLICT(${db.key("category")}) DO UPDATE SET value=receipt_sequences.value+1 RETURNING value`,
         category,
@@ -677,6 +718,7 @@ export function createApp(
             };
           })
           .sort((a: Row, c: Row) => a.period.localeCompare(c.period)),
+        ...(advance ? { advance } : {}),
       };
       const p = await db.get(
         "INSERT INTO payments (student_id,amount,date,mode,reference,category,receipt,received_by,idempotency_key,created_at,snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
@@ -751,7 +793,7 @@ export function createApp(
       refunded_amount: db.communities
         ? (
             await db.get(
-              "SELECT COALESCE(SUM(refunded_amount),0) AS amount FROM allocations WHERE payment_id=?",
+              `SELECT ${refundedSql} AS amount FROM payments p WHERE p.id=?`,
               p.id,
             )
           ).amount
@@ -853,7 +895,14 @@ export function createApp(
     res.json({ ok: true });
   });
   gateway.routes(app);
-  registerOperations(app, { db, audit, demands, payments, settings });
+  registerOperations(app, {
+    db,
+    audit,
+    demands,
+    payments,
+    settings,
+    applyCredit,
+  });
   app.use("/api", (_req, res) =>
     res.status(404).json({ error: "Endpoint not found." }),
   );

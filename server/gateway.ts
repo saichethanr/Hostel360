@@ -311,23 +311,20 @@ export class Gateway {
                 a.demand_id - b.demand_id
               );
             });
+        // Money beyond the dues still open is kept as the student's credit.
         let remaining = o.amount - refunded;
         const allocations = requested
           .map((a) => {
-            const amount = Math.min(a.amount, remaining);
+            const open = ds.find((d) => d.id === a.demand_id)?.balance ?? 0;
+            const amount = Math.max(0, Math.min(a.amount, remaining, open));
             remaining -= amount;
             return { demand_id: a.demand_id, amount };
           })
           .filter((a) => a.amount > 0);
-        const fits =
-          remaining === 0 &&
-          allocations.every((a) =>
-            ds.some((d) => d.id === a.demand_id && d.balance >= a.amount),
-          );
-        if (!fits || !["upi", "card"].includes(p.method)) {
+        if (!["upi", "card"].includes(p.method)) {
           ensure(
             !reconciliation,
-            "Retained money exceeds outstanding fees or uses an unsupported method. Refund the excess in Razorpay, then reconcile again.",
+            "This payment uses an unsupported method. Refund it in Razorpay.",
             409,
           );
           status = "review";
@@ -348,6 +345,7 @@ export class Gateway {
               }).format(new Date(p.created_at * 1000)),
               mode: p.method === "upi" ? "UPI" : "Card",
               reference: p.id,
+              category: o.category,
               allocations,
               idempotency_key: `gateway-${o.id}`,
               gateway: { charged: o.amount, refunded_before_receipt: refunded },
@@ -369,6 +367,15 @@ export class Gateway {
         const allocations = await this.db.all(
           "SELECT a.*,d.period FROM allocations a JOIN demands d ON d.id=a.demand_id WHERE a.payment_id=? ORDER BY d.period DESC,d.id DESC",
           payment,
+        );
+        // A refund first returns unallocated credit, then the latest fees.
+        const paid = await this.db.get(
+          "SELECT amount FROM payments WHERE id=?",
+          payment,
+        );
+        remaining -= Math.min(
+          remaining,
+          paid.amount - allocations.reduce((sum, a) => sum + a.amount, 0),
         );
         for (const a of allocations) {
           const amount = Math.min(remaining, a.amount);
@@ -727,8 +734,14 @@ export class Gateway {
         "Online checkout is temporarily paused. Existing payments can still be checked.",
         503,
       );
-      const studentId =
-        user.role === "Student" ? user.student_id : b.student_id;
+      // Only students pay online; staff record cash and bank payments.
+      ensure(user.role === "Student", "Only students can pay online.", 403);
+      const studentId = user.student_id;
+      ensure(
+        b.amount === undefined ||
+          (integer(b.amount) && b.amount >= 100 && b.amount <= 50_000_000),
+        "Enter an amount from ₹1 to ₹5,00,000.",
+      );
       ensure(
         integer(studentId) &&
           categories.includes(b.category) &&
@@ -746,11 +759,23 @@ export class Gateway {
         const ds = (await this.services.demands(studentId)).filter(
           (d) => d.category === b.category && d.balance > 0,
         );
+        // Students may pay less (the rest stays due) or more (the excess is
+        // kept as credit for their next dues). Oldest dues are settled first.
+        const balance = ds.reduce((sum, d) => sum + d.balance, 0);
+        const amount: number = b.amount ?? balance;
+        let left = amount;
         const allocations = ds
-          .map((d) => ({ demand_id: d.id, amount: d.balance }))
+          .sort((x, y) => x.period.localeCompare(y.period) || x.id - y.id)
+          .map((d) => {
+            const part = Math.min(left, d.balance);
+            left -= part;
+            return { demand_id: d.id, amount: part };
+          })
+          .filter((a) => a.amount > 0)
           .sort((a, b) => a.demand_id - b.demand_id);
         const currentQuote = (order: Row) =>
           order.key_id === c.key_id &&
+          order.amount === amount &&
           JSON.stringify(
             JSON.parse(order.allocations).sort(
               (a: Row, b: Row) => a.demand_id - b.demand_id,
@@ -806,7 +831,6 @@ export class Gateway {
             pending.id,
           );
         }
-        const amount = ds.reduce((sum, d) => sum + d.balance, 0);
         ensure(
           ds.length > 0 && ds.length <= 200 && integer(amount),
           "No payable balance in this category, or the payment exceeds the supported limit.",
@@ -830,9 +854,7 @@ export class Gateway {
           c.key_id,
           amount,
           b.category,
-          JSON.stringify(
-            ds.map((d) => ({ demand_id: d.id, amount: d.balance })),
-          ),
+          JSON.stringify(allocations),
           now(),
           now(),
         );

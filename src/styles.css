@@ -3341,3 +3341,46 @@ button.community-choice:focus-visible {
   height: 34px;
   margin-left: 6px;
 }
+.online-credit {
+  display: block;
+  margin-top: 4px;
+  color: var(--green);
+}
+.online-payment-form .online-amount {
+  flex: 0 1 180px;
+  min-width: 140px;
+}
+.blocks-settings .blocks-count {
+  max-width: 200px;
+  margin-bottom: 16px;
+}
+.blocks-settings td input,
+.blocks-settings td select {
+  width: 110px;
+  height: 34px;
+}
+.blocks-settings td .text-button {
+  display: block;
+  margin-top: 4px;
+}
+.room-sizes {
+  margin: 16px 0;
+}
+.room-sizes h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+.room-sizes > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 10px;
+}
+.room-sizes input {
+  height: 34px;
+}
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
