@@ -23,6 +23,7 @@ import {
   categories,
 } from "./http.js";
 import { feeDefaults, registerOperations } from "./operations.js";
+import { onLeave, registerLeaves } from "./leaves.js";
 import { saveBackup } from "./backup.js";
 import { registerCommunities } from "./communities.js";
 import { Gateway } from "./gateway.js";
@@ -334,24 +335,26 @@ export function createApp(
   });
   app.get("/api/workspace", async (_req, res) => {
     const user = me(res),
-      sid = user.role === "Student" ? (user.student_id ?? -1) : undefined;
+      sid = user.role === "Student" ? (user.student_id ?? -1) : undefined,
+      // Wardens handle leave only: student names and rooms, no finances.
+      warden = user.role === "Warden";
     const [s, students, ds, ps, attendance, events, cs] = await Promise.all([
       settings(),
       db.all(
         `SELECT * FROM students ${sid !== undefined ? "WHERE id=?" : ""} ORDER BY name`,
         ...(sid !== undefined ? [sid] : []),
       ),
-      demands(sid),
-      payments(sid),
+      warden ? [] : demands(sid),
+      warden ? [] : payments(sid),
       db.all(
         `SELECT student_id,status FROM attendance WHERE date=? ${sid !== undefined ? "AND student_id=?" : ""}`,
         today(),
         ...(sid !== undefined ? [sid] : []),
       ),
-      sid !== undefined
+      sid !== undefined || warden
         ? []
         : db.all("SELECT * FROM audit ORDER BY id DESC LIMIT 100"),
-      credits(sid),
+      warden ? [] : credits(sid),
     ]);
     res.json({
       user,
@@ -364,6 +367,15 @@ export function createApp(
       credits: cs,
       attendance,
       audit: events,
+      ...(db.communities && warden
+        ? {
+            pending_leaves: (
+              await db.get(
+                "SELECT COUNT(*) AS count FROM leaves WHERE status='Pending'",
+              )
+            ).count,
+          }
+        : {}),
       // Admins see join requests waiting for a decision on every screen.
       ...(db.communities && user.role === "Admin"
         ? {
@@ -379,10 +391,16 @@ export function createApp(
   app.get("/api/attendance", async (req, res) => {
     staff(res);
     ensure(validDate(req.query.date), "Choose a valid date.");
+    // Students on approved leave are shown as such and cannot be re-marked.
+    const leave = await onLeave(db, String(req.query.date));
     res.json(
-      await db.all(
-        "SELECT student_id,status FROM attendance WHERE date=?",
-        req.query.date,
+      (
+        await db.all(
+          "SELECT student_id,status FROM attendance WHERE date=?",
+          req.query.date,
+        )
+      ).map((r) =>
+        leave.has(r.student_id) ? { ...r, approved_leave: true } : r,
       ),
     );
   });
@@ -443,6 +461,9 @@ export function createApp(
           "Student is not active on this date.",
         );
       }
+      // Approved leave always stays Leave, whatever was marked.
+      const leave = await onLeave(db, date);
+      for (const e of entries) if (leave.has(e.student_id)) e.status = "Leave";
       await db.insertRows(
         "attendance",
         ["student_id", "date", "status", "recorded_by", "updated_at"],
@@ -895,6 +916,7 @@ export function createApp(
     res.json({ ok: true });
   });
   gateway.routes(app);
+  registerLeaves(app, db, audit);
   registerOperations(app, {
     db,
     audit,

@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { OnlinePayments } from "./gateway";
+import { LeavePage } from "./leave";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -89,6 +90,7 @@ type Page =
   | "Receipts"
   | "Reports & audit"
   | "Operations"
+  | "Leave"
   | "My application"
   | "My account"
   | "Settings";
@@ -101,6 +103,7 @@ const pageIcons: Record<Page, LucideIcon> = {
   Receipts: ReceiptText,
   "Reports & audit": FileCheck2,
   Operations: Building2,
+  Leave: CalendarDays,
   "My application": FileCheck2,
   "My account": ShieldCheck,
   Settings: Settings2,
@@ -115,6 +118,7 @@ const pageDescriptions: Record<Page, string> = {
   "Reports & audit": "The numbers you need. The history you can trust.",
   Operations:
     "Admissions, accounts and the details that keep your hostel running.",
+  Leave: "Casual and medical leave, approved by the Warden.",
   "My application": "Your application, details and admission decision.",
   "My account": "Keep your workspace access secure.",
   Settings: "Make the hostel workspace feel at home.",
@@ -418,6 +422,7 @@ function App() {
       setData(workspace);
       if (workspace.user.role === "Student" && !workspace.user.student_id)
         setPage("My application");
+      if (workspace.user.role === "Warden") setPage("Leave");
     } catch (e) {
       if (e instanceof RequestError && e.status === 401) {
         setData(null);
@@ -498,6 +503,7 @@ function App() {
     );
   const isStudent = data.user.role === "Student";
   const isAdmin = data.user.role === "Admin";
+  // Wardens handle leave only.
   const pages: Page[] = isStudent
     ? data.user.student_id
       ? [
@@ -506,21 +512,25 @@ function App() {
           "Students",
           "Fee demands",
           "Receipts",
+          "Leave",
           "My account",
         ]
       : ["My application", "My account"]
-    : [
-        "Dashboard",
-        "Students",
-        "Attendance",
-        "Fee demands",
-        "Payments",
-        "Receipts",
-        "Reports & audit",
-        "Operations",
-        ...(isAdmin ? ["Settings" as Page] : []),
-        "My account",
-      ];
+    : data.user.role === "Warden"
+      ? ["Leave", "My account"]
+      : [
+          "Dashboard",
+          "Students",
+          "Attendance",
+          "Leave",
+          "Fee demands",
+          "Payments",
+          "Receipts",
+          "Reports & audit",
+          "Operations",
+          ...(isAdmin ? ["Settings" as Page] : []),
+          "My account",
+        ];
   const title =
     isStudent && page === "Students"
       ? "My profile"
@@ -585,6 +595,14 @@ function App() {
                   </span>
                   {item === "Students" && !isStudent && (
                     <span className="nav-count">{data.students.length}</span>
+                  )}
+                  {item === "Leave" && !!data.pending_leaves && (
+                    <span
+                      className="nav-count alert"
+                      title="Leave requests waiting for your decision"
+                    >
+                      {data.pending_leaves}
+                    </span>
                   )}
                   {item === "Operations" && !!data.pending_members && (
                     <span
@@ -692,6 +710,7 @@ function App() {
               )}
             </div>
           </div>
+          {page === "Leave" && <LeavePage data={data} onSaved={saved} />}
           {page === "Dashboard" && (
             <Dashboard
               data={data}
@@ -1716,6 +1735,8 @@ function AttendancePage({
 }) {
   const [date, setDate] = useState(data.today);
   const [entries, setEntries] = useState<Record<number, string>>({});
+  // Approved by the Warden: these students stay on Leave for the day.
+  const [onLeave, setOnLeave] = useState<Set<number>>(new Set());
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1731,6 +1752,11 @@ function AttendancePage({
         if (active) {
           setEntries(
             Object.fromEntries(rows.map((r) => [r.student_id, r.status])),
+          );
+          setOnLeave(
+            new Set(
+              rows.filter((r) => r.approved_leave).map((r) => r.student_id),
+            ),
           );
           setDirty(false);
         }
@@ -1850,7 +1876,11 @@ function AttendancePage({
             onClick={() => {
               setEntries((current) => ({
                 ...current,
-                ...Object.fromEntries(students.map((s) => [s.id, "Present"])),
+                ...Object.fromEntries(
+                  students
+                    .filter((s) => !onLeave.has(s.id))
+                    .map((s) => [s.id, "Present"]),
+                ),
               }));
               setDirty(true);
             }}
@@ -1886,6 +1916,11 @@ function AttendancePage({
                     <td>{s.room}</td>
                     <td>{s.department}</td>
                     <td>
+                      {onLeave.has(s.id) && (
+                        <span className="badge leave-badge">
+                          Approved leave
+                        </span>
+                      )}
                       <div
                         className="attendance-toggle"
                         role="group"
@@ -1894,7 +1929,9 @@ function AttendancePage({
                         {["Present", "Absent", "Leave"].map((status) => (
                           <button
                             key={status}
-                            disabled={locked || busy || !!error}
+                            disabled={
+                              locked || busy || !!error || onLeave.has(s.id)
+                            }
                             className={
                               entries[s.id] === status
                                 ? `selected ${status.toLowerCase()}`

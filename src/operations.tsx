@@ -544,6 +544,7 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
                 >
                   <option>Student</option>
                   <option>Manager</option>
+                  <option>Warden</option>
                   <option>Admin</option>
                 </select>
               </label>
@@ -1751,7 +1752,7 @@ function Accounts({
             {
               name: "role",
               label: "Role",
-              options: choices(["Manager", "Student", "Admin"]),
+              options: choices(["Manager", "Warden", "Student", "Admin"]),
             },
             {
               name: "student_id",

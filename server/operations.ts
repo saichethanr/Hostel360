@@ -122,6 +122,63 @@ const feeLines = (type: string) =>
     label,
     key: `fee_${type.toLowerCase()}_${key}`,
   }));
+// Saves a PDF, PNG or JPEG (2 MB max) privately for a student and records
+// it; `after` runs in the same transaction. Returns the document id.
+export async function storeDocument(
+  db: Store,
+  id: number,
+  b: Row,
+  actor: { id: number },
+  after: (documentId: number) => Promise<void>,
+): Promise<number> {
+  ensure(
+    text(b.name, 200) &&
+      typeof b.content === "string" &&
+      b.content.length <= 2_800_000,
+    "Select a PDF, JPEG or PNG smaller than 2 MB.",
+  );
+  const bytes = Buffer.from(b.content, "base64");
+  const mime =
+    bytes.subarray(0, 5).toString() === "%PDF-"
+      ? "application/pdf"
+      : bytes
+            .subarray(0, 8)
+            .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        ? "image/png"
+        : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
+          ? "image/jpeg"
+          : "";
+  ensure(
+    mime && bytes.length <= 2_000_000,
+    "Only PDF, PNG and JPEG files up to 2 MB are accepted.",
+  );
+  const path = `${db.communities ? `communities/${db.communityId}/` : ""}${id}/${randomUUID()}`;
+  const storage = supabase().storage.from("student-documents");
+  const upload = await storage.upload(path, bytes, {
+    contentType: mime,
+    upsert: false,
+  });
+  ensure(!upload.error, "Document upload failed. Please try again.");
+  try {
+    return await db.transaction(async () => {
+      const doc = await db.get(
+        "INSERT INTO documents (student_id,name,path,mime,bytes,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?) RETURNING id",
+        id,
+        b.name,
+        path,
+        mime,
+        bytes.length,
+        actor.id,
+        now(),
+      );
+      await after(doc.id);
+      return doc.id;
+    });
+  } catch (e) {
+    await storage.remove([path]);
+    throw e;
+  }
+}
 export function registerOperations(
   app: Express,
   { db, audit, demands, payments, settings, applyCredit }: Services,
@@ -641,7 +698,7 @@ export function registerOperations(
       text(b.name) &&
         text(b.email) &&
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email) &&
-        ["Admin", "Manager", "Student"].includes(b.role) &&
+        ["Admin", "Manager", "Warden", "Student"].includes(b.role) &&
         text(b.password, 200) &&
         b.password.length >= 12,
       "Provide name, email, role and temporary password (12+ characters).",
@@ -740,52 +797,9 @@ export function registerOperations(
       "Student not found.",
       404,
     );
-    ensure(
-      text(b.name, 200) &&
-        typeof b.content === "string" &&
-        b.content.length <= 2_800_000,
-      "Select a PDF, JPEG or PNG smaller than 2 MB.",
+    await storeDocument(db, id, b, me(res), () =>
+      audit(me(res), "Document uploaded", `Student #${id} · ${b.name}`),
     );
-    const bytes = Buffer.from(b.content, "base64");
-    const mime =
-      bytes.subarray(0, 5).toString() === "%PDF-"
-        ? "application/pdf"
-        : bytes
-              .subarray(0, 8)
-              .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-          ? "image/png"
-          : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
-            ? "image/jpeg"
-            : "";
-    ensure(
-      mime && bytes.length <= 2_000_000,
-      "Only PDF, PNG and JPEG files up to 2 MB are accepted.",
-    );
-    const path = `${db.communities ? `communities/${db.communityId}/` : ""}${id}/${randomUUID()}`;
-    const storage = supabase().storage.from("student-documents");
-    const upload = await storage.upload(path, bytes, {
-      contentType: mime,
-      upsert: false,
-    });
-    ensure(!upload.error, "Document upload failed. Please try again.");
-    try {
-      await db.transaction(async () => {
-        await db.run(
-          "INSERT INTO documents (student_id,name,path,mime,bytes,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?)",
-          id,
-          b.name,
-          path,
-          mime,
-          bytes.length,
-          me(res).id,
-          now(),
-        );
-        await audit(me(res), "Document uploaded", `Student #${id} · ${b.name}`);
-      });
-    } catch (e) {
-      await storage.remove([path]);
-      throw e;
-    }
     res.status(201).json({ ok: true });
   });
   app.get("/api/documents/:id", async (req, res) => {

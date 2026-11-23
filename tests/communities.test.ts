@@ -70,6 +70,7 @@ test(
     for (const name of [
       "20261115010000_gateway",
       "20261115020000_payment_recovery",
+      "20261123010000_leave_warden",
     ])
       await owner.query(
         await readFile(

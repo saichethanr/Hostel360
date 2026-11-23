@@ -317,8 +317,9 @@ export function registerCommunities(app: Express, db: Store) {
   app.post("/api/communities/join", async (req, res) => {
     const b = req.body;
     ensure(
-      text(b.name) && ["Admin", "Manager", "Student"].includes(b.role),
-      "Enter your name and request Admin, Manager or Student access.",
+      text(b.name) &&
+        ["Admin", "Manager", "Warden", "Student"].includes(b.role),
+      "Enter your name and request Admin, Manager, Warden or Student access.",
     );
     const community = await communityByCode(b.code);
     // Students send their hostel details now, so approval is a single step.

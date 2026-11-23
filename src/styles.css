@@ -3384,3 +3384,169 @@ button.community-choice:focus-visible {
   gap: 6px;
   white-space: nowrap;
 }
+/* Leave: calendar, requests and status badges. */
+.leave-page {
+  display: grid;
+  gap: 24px;
+}
+.leave-days strong {
+  display: block;
+  padding: 12px 0;
+  font-size: 16px;
+}
+.badge.leave-medical,
+.badge.status-pending {
+  background: #fbf2e2;
+  color: #a5762f;
+}
+.badge.status-rejected,
+.badge.status-cancelled {
+  background: #f8e7e4;
+  color: #a4473a;
+}
+.leave-badge {
+  margin-bottom: 6px;
+}
+.leave-requests {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  padding: 0 23px 23px;
+}
+.leave-request {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+.leave-request small {
+  display: block;
+  color: var(--muted);
+}
+.leave-request p {
+  margin: 0;
+}
+.leave-actions,
+.leave-reject {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.leave-reject .field {
+  flex: 1;
+  min-width: 160px;
+}
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.calendar-nav strong {
+  min-width: 130px;
+  text-align: center;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 23px 16px;
+}
+.calendar-head {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  padding: 4px 0;
+}
+.calendar-day {
+  min-height: 64px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 6px 8px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+.calendar-day span {
+  font-size: 13px;
+  font-weight: 600;
+}
+.calendar-day small {
+  font-size: 10px;
+  line-height: 1.3;
+}
+.calendar-day.today {
+  border-color: var(--green);
+}
+.calendar-day.picked {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+.calendar-day.has-leave.approved {
+  background: var(--chart-demand);
+}
+.calendar-day.has-leave.approved.medical {
+  background: #f3dcc0;
+  color: #5b3b12;
+}
+.calendar-day.has-leave.pending {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 6px,
+    rgba(196, 150, 62, 0.22) 6px 12px
+  );
+}
+.calendar-legend {
+  display: flex;
+  gap: 18px;
+  padding: 0 23px 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.calendar-legend i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+.calendar-legend .approved {
+  background: var(--chart-demand);
+}
+.calendar-legend .pending {
+  background: rgba(196, 150, 62, 0.35);
+}
+.calendar-legend .medical {
+  background: #f3dcc0;
+}
+.calendar-day-list {
+  border-top: 1px solid var(--line);
+  padding: 16px 23px 20px;
+}
+.calendar-day-list h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+.calendar-day-list ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .calendar-day {
+    min-height: 48px;
+    padding: 4px;
+  }
+  .calendar-day small {
+    display: none;
+  }
+}

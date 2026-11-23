@@ -58,7 +58,11 @@ export type Receipt = Payment & {
   // Paid beyond the dues; kept as credit for the next dues.
   advance?: number;
 };
-export type Attendance = { student_id: number; status: string };
+export type Attendance = {
+  student_id: number;
+  status: string;
+  approved_leave?: boolean;
+};
 export type Preview = {
   period: string;
   rate: number;
@@ -87,6 +91,7 @@ export type Membership = {
 export type Workspace = {
   community?: Community;
   pending_members?: number;
+  pending_leaves?: number;
   user: {
     id: number;
     name: string;

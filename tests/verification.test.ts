@@ -22,6 +22,7 @@ test(
       "20261111000000_hostel360",
       "20261111010000_communities",
       "20261121010000_parent_details",
+      "20261123010000_leave_warden",
     ])
       await owner.query(
         await readFile(
