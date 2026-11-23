@@ -44,7 +44,7 @@ declare global {
   }
 }
 let loading: Promise<void> | undefined;
-async function loadCheckout() {
+export async function loadCheckout() {
   if (window.Razorpay) return;
   if (!loading)
     loading = new Promise<void>((resolve, reject) => {

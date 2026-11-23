@@ -8,6 +8,7 @@ import React, {
 import { createRoot } from "react-dom/client";
 import { OnlinePayments } from "./gateway";
 import { LeavePage } from "./leave";
+import { AppealPage, SponsorPage, SponsorshipAdmin } from "./sponsorship";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -23,6 +24,7 @@ import {
   Clock3,
   FileCheck2,
   FileText,
+  HeartHandshake,
   LayoutDashboard,
   Leaf,
   LockKeyhole,
@@ -91,6 +93,7 @@ type Page =
   | "Reports & audit"
   | "Operations"
   | "Leave"
+  | "Sponsorship"
   | "My application"
   | "My account"
   | "Settings";
@@ -104,6 +107,7 @@ const pageIcons: Record<Page, LucideIcon> = {
   "Reports & audit": FileCheck2,
   Operations: Building2,
   Leave: CalendarDays,
+  Sponsorship: HeartHandshake,
   "My application": FileCheck2,
   "My account": ShieldCheck,
   Settings: Settings2,
@@ -119,6 +123,7 @@ const pageDescriptions: Record<Page, string> = {
   Operations:
     "Admissions, accounts and the details that keep your hostel running.",
   Leave: "Casual and medical leave, approved by the Warden or Admin.",
+  Sponsorship: "Sponsors helping students with their hostel fees.",
   "My application": "Your application, details and admission decision.",
   "My account": "Keep your workspace access secure.",
   Settings: "Make the hostel workspace feel at home.",
@@ -423,6 +428,7 @@ function App() {
       if (workspace.user.role === "Student" && !workspace.user.student_id)
         setPage("My application");
       if (workspace.user.role === "Warden") setPage("Leave");
+      if (workspace.user.role === "Sponsor") setPage("Sponsorship");
     } catch (e) {
       if (e instanceof RequestError && e.status === 401) {
         setData(null);
@@ -518,19 +524,22 @@ function App() {
       : ["My application", "My account"]
     : data.user.role === "Warden"
       ? ["Leave", "My account"]
-      : [
-          "Dashboard",
-          "Students",
-          "Attendance",
-          "Leave",
-          "Fee demands",
-          "Payments",
-          "Receipts",
-          "Reports & audit",
-          "Operations",
-          ...(isAdmin ? ["Settings" as Page] : []),
-          "My account",
-        ];
+      : data.user.role === "Sponsor"
+        ? ["Sponsorship", "My account"]
+        : [
+            "Dashboard",
+            "Students",
+            "Attendance",
+            "Leave",
+            "Fee demands",
+            "Payments",
+            "Receipts",
+            ...(isAdmin ? ["Sponsorship" as Page] : []),
+            "Reports & audit",
+            "Operations",
+            ...(isAdmin ? ["Settings" as Page] : []),
+            "My account",
+          ];
   const title =
     isStudent && page === "Students"
       ? "My profile"
@@ -711,6 +720,12 @@ function App() {
             </div>
           </div>
           {page === "Leave" && <LeavePage data={data} onSaved={saved} />}
+          {page === "Sponsorship" &&
+            (isAdmin ? (
+              <SponsorshipAdmin data={data} onSaved={saved} />
+            ) : (
+              <SponsorPage data={data} onSaved={saved} />
+            ))}
           {page === "Dashboard" && (
             <Dashboard
               data={data}
@@ -3283,8 +3298,10 @@ function SettingsPage({
   );
 }
 
+// Shared sponsorship pages open without signing in.
+const appeal = window.location.pathname.match(/^\/appeal\/([\w-]{8,40})$/);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    {appeal ? <AppealPage token={appeal[1]} /> : <App />}
   </React.StrictMode>,
 );

@@ -659,3 +659,16 @@
 :root[data-theme="dark"] .chart-empty {
   background: hsl(0 0% 11% / 0.88);
 }
+:where(:root[data-theme="dark"]) .appeal-card > .sponsor-card {
+  background: hsl(80 10% 16%);
+}
+:where(:root[data-theme="dark"]) .appeal-brand {
+  color: hsl(148 44% 84%);
+}
+:where(:root[data-theme="dark"]) .sponsor-photo.initials {
+  background: hsl(92 24% 25%);
+  color: hsl(148 44% 84%);
+}
+:where(:root[data-theme="dark"]) .sponsor-due strong {
+  color: hsl(8 60% 72%);
+}

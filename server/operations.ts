@@ -698,7 +698,7 @@ export function registerOperations(
       text(b.name) &&
         text(b.email) &&
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email) &&
-        ["Admin", "Manager", "Warden", "Student"].includes(b.role) &&
+        ["Admin", "Manager", "Warden", "Student", "Sponsor"].includes(b.role) &&
         text(b.password, 200) &&
         b.password.length >= 12,
       "Provide name, email, role and temporary password (12+ characters).",

@@ -359,8 +359,8 @@ export function registerCommunities(app: Express, db: Store) {
     const b = req.body;
     ensure(
       text(b.name) &&
-        ["Admin", "Manager", "Warden", "Student"].includes(b.role),
-      "Enter your name and request Admin, Manager, Warden or Student access.",
+        ["Admin", "Manager", "Warden", "Student", "Sponsor"].includes(b.role),
+      "Enter your name and request Admin, Manager, Warden, Student or Sponsor access.",
     );
     const community = await communityByCode(b.code);
     // Students send their hostel details now, so approval is a single step.
@@ -512,6 +512,8 @@ export function registerCommunities(app: Express, db: Store) {
     res.json({ ok: true });
   });
   app.use("/api", async (req, res, next) => {
+    // Shared sponsorship pages are public; they show only what the Admin chose.
+    if (req.path.startsWith("/public/")) return next();
     const user = await db.get(
       "SELECT u.id,u.name,u.email,u.role,u.student_id,u.auth_id,u.identity_id,u.active,u.membership_status,u.membership_reason,u.must_change_password FROM sessions s JOIN users u ON u.id=s.user_id JOIN identities i ON i.id=u.identity_id WHERE s.token=? AND s.expires>? AND s.auth_version=i.version",
       token(req),
@@ -528,6 +530,14 @@ export function registerCommunities(app: Express, db: Store) {
       ensure(
         !user.must_change_password || req.path === "/workspace",
         "Change your temporary password before continuing.",
+        403,
+      );
+      // Sponsors see sponsorship profiles and their own giving, nothing else.
+      ensure(
+        user.role !== "Sponsor" ||
+          req.path === "/workspace" ||
+          req.path.startsWith("/sponsorship/"),
+        "Sponsors can open sponsorship pages only.",
         403,
       );
     }

@@ -26,6 +26,7 @@ import { feeDefaults, registerOperations } from "./operations.js";
 import { onLeave, registerLeaves } from "./leaves.js";
 import { saveBackup } from "./backup.js";
 import { registerCommunities } from "./communities.js";
+import { registerSponsors } from "./sponsors.js";
 import { Gateway } from "./gateway.js";
 
 export function createApp(
@@ -337,24 +338,30 @@ export function createApp(
     const user = me(res),
       sid = user.role === "Student" ? (user.student_id ?? -1) : undefined,
       // Wardens handle leave only: student names and rooms, no finances.
-      warden = user.role === "Warden";
+      warden = user.role === "Warden",
+      // Sponsors see sponsorship profiles only, loaded from /sponsorship.
+      sponsor = user.role === "Sponsor";
     const [s, students, ds, ps, attendance, events, cs] = await Promise.all([
       settings(),
-      db.all(
-        `SELECT * FROM students ${sid !== undefined ? "WHERE id=?" : ""} ORDER BY name`,
-        ...(sid !== undefined ? [sid] : []),
-      ),
-      warden ? [] : demands(sid),
-      warden ? [] : payments(sid),
-      db.all(
-        `SELECT student_id,status FROM attendance WHERE date=? ${sid !== undefined ? "AND student_id=?" : ""}`,
-        today(),
-        ...(sid !== undefined ? [sid] : []),
-      ),
-      sid !== undefined || warden
+      sponsor
+        ? []
+        : db.all(
+            `SELECT * FROM students ${sid !== undefined ? "WHERE id=?" : ""} ORDER BY name`,
+            ...(sid !== undefined ? [sid] : []),
+          ),
+      warden || sponsor ? [] : demands(sid),
+      warden || sponsor ? [] : payments(sid),
+      sponsor
+        ? []
+        : db.all(
+            `SELECT student_id,status FROM attendance WHERE date=? ${sid !== undefined ? "AND student_id=?" : ""}`,
+            today(),
+            ...(sid !== undefined ? [sid] : []),
+          ),
+      sid !== undefined || warden || sponsor
         ? []
         : db.all("SELECT * FROM audit ORDER BY id DESC LIMIT 100"),
-      warden ? [] : credits(sid),
+      warden || sponsor ? [] : credits(sid),
     ]);
     res.json({
       user,
@@ -917,6 +924,14 @@ export function createApp(
   });
   gateway.routes(app);
   registerLeaves(app, db, audit);
+  if (db.communities)
+    registerSponsors(app, {
+      db,
+      audit,
+      demands,
+      record: recordPayment,
+      gateway,
+    });
   registerOperations(app, {
     db,
     audit,

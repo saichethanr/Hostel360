@@ -399,8 +399,11 @@ const exportButton = (kind: string, label: string) => (
 );
 
 export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
-  const [mode, setMode] = useState("Sign in");
-  const [joinRole, setJoinRole] = useState("Student");
+  // A shared sponsorship page links here with ?register=sponsor.
+  const sponsorLink =
+    new URLSearchParams(window.location.search).get("register") === "sponsor";
+  const [mode, setMode] = useState(sponsorLink ? "Register" : "Sign in");
+  const [joinRole, setJoinRole] = useState(sponsorLink ? "Sponsor" : "Student");
   const [joined, setJoined] = useState(false);
   // Registration waiting for its emailed code; details stay put.
   const [verifying, setVerifying] = useState<{
@@ -615,9 +618,11 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
           description={
             mode === "Register" && joinRole === "Admin"
               ? "Your Admin request goes to the current Admin. You get full access once they approve it."
-              : mode === "Register"
-                ? "Students send their hostel details now. The Admin assigns your room and approves you in one step."
-                : "Use your own email and password."
+              : mode === "Register" && joinRole === "Sponsor"
+                ? "Sponsors see students listed for support and pay fees with UPI or card. The Admin approves your account first."
+                : mode === "Register"
+                  ? "Students send their hostel details now. The Admin assigns your room and approves you in one step."
+                  : "Use your own email and password."
           }
           fields={[
             ...(mode === "Register" ? [field("name", "Your full name")] : []),
@@ -640,6 +645,7 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
                   <option>Student</option>
                   <option>Manager</option>
                   <option>Warden</option>
+                  <option>Sponsor</option>
                   <option>Admin</option>
                 </select>
               </label>
@@ -1872,7 +1878,7 @@ function Accounts({
             {
               name: "role",
               label: "Role",
-              options: choices(["Manager", "Warden", "Student", "Admin"]),
+              options: choices(["Manager", "Warden", "Student", "Sponsor", "Admin"]),
             },
             {
               name: "student_id",

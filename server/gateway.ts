@@ -25,6 +25,8 @@ type Services = {
 // Each hostel uses its own merchant account. Secrets are server environment
 // values, never settings rows, browser responses, backups or application logs.
 export class Gateway {
+  // Settles a sponsor contribution order the webhook reports (see sponsors.ts).
+  sponsorOrder?: (providerOrderId: string, keyId: string) => Promise<void>;
   constructor(
     private db: Store,
     private services: Services,
@@ -74,11 +76,7 @@ export class Gateway {
     return c;
   }
 
-  private signature(
-    payload: string | Buffer,
-    signature: unknown,
-    secret: string,
-  ) {
+  signature(payload: string | Buffer, signature: unknown, secret: string) {
     ensure(
       typeof signature === "string" && /^[a-f0-9]{64}$/.test(signature),
       "Invalid payment signature.",
@@ -92,7 +90,7 @@ export class Gateway {
     );
   }
 
-  private async provider(
+  async provider(
     path: string,
     c: Credentials & { api_key_id?: string },
     body?: Row,
@@ -673,6 +671,7 @@ export class Gateway {
               c.key_id,
             );
             if (order) await this.syncOrder(order);
+            else await this.sponsorOrder?.(payment.order_id, c.key_id);
           }
           res.json({ ok: true });
         });
