@@ -408,10 +408,105 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
     body: Row;
   } | null>(null);
   const [resent, setResent] = useState("");
+  // Forgot password: "email" asks where to send the code; a string is the
+  // email the code went to. `reset` confirms the new password on Sign in.
+  const [forgot, setForgot] = useState<"email" | string | null>(null);
+  const [reset, setReset] = useState("");
   const switchMode = (next: string) => {
     setMode(next);
     setJoined(false);
+    setReset("");
   };
+  if (forgot === "email")
+    return (
+      <div className="setup-page community-page">
+        <div className="eyebrow">FORGOT PASSWORD</div>
+        <h1>Reset your password.</h1>
+        <p>
+          Enter the email you use for {HOSTEL.short}. We’ll send it a code so
+          you can choose a new password.
+        </p>
+        <Form
+          title="Your email"
+          fields={[field("email", "Email", "email")]}
+          submit="Send code"
+          onSubmit={async (v) => {
+            const email = String(v.email).trim().toLowerCase();
+            await api("/email/code", { email });
+            setResent("");
+            setForgot(email);
+          }}
+        >
+          <p className="notice">
+            Remembered it?{" "}
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setForgot(null)}
+            >
+              Back to sign in
+            </button>
+          </p>
+        </Form>
+      </div>
+    );
+  if (forgot)
+    return (
+      <div className="setup-page community-page">
+        <div className="eyebrow">FORGOT PASSWORD</div>
+        <h1>Check your inbox.</h1>
+        <p>
+          We sent a code to <strong>{forgot}</strong>. Enter it with your new
+          password.
+        </p>
+        <Form
+          title="Choose a new password"
+          fields={[
+            field("email_code", "Code from your email"),
+            field("password", "New password (12+ characters)", "password"),
+          ]}
+          submit="Change password"
+          onSubmit={async (v) => {
+            await api("/password/reset", {
+              email: forgot,
+              email_code: String(v.email_code).trim(),
+              password: v.password,
+            });
+            setForgot(null);
+            setMode("Sign in");
+            setReset("Password changed. Sign in with your new password.");
+          }}
+        >
+          <p className="notice">
+            The code expires in an hour. Didn’t get it? Check spam, or{" "}
+            <button
+              type="button"
+              className="text-button"
+              onClick={async () => {
+                setResent("");
+                try {
+                  await api("/email/code", { email: forgot });
+                  setResent("A new code has been sent.");
+                } catch (e) {
+                  setResent(errorText(e));
+                }
+              }}
+            >
+              send a new code
+            </button>{" "}
+            or{" "}
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setForgot("email")}
+            >
+              change your email
+            </button>
+            .{resent && <strong> {resent}</strong>}
+          </p>
+        </Form>
+      </div>
+    );
   if (verifying)
     return (
       <div className="setup-page community-page">
@@ -551,7 +646,21 @@ export function CommunityGate({ onLogin }: { onLogin: () => Promise<void> }) {
             ) : null
           }
           after={
-            mode === "Register" && joinRole === "Student" ? (
+            mode === "Sign in" ? (
+              <>
+                {reset && <p className="notice">{reset}</p>}
+                <button
+                  type="button"
+                  className="text-button forgot-password"
+                  onClick={() => {
+                    setReset("");
+                    setForgot("email");
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </>
+            ) : mode === "Register" && joinRole === "Student" ? (
               <fieldset className="join-details">
                 <legend>Your hostel details</legend>
                 <p>

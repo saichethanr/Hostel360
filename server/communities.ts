@@ -142,7 +142,7 @@ export function registerCommunities(app: Express, db: Store) {
       }
       ensure(
         !result.error && result.data.user,
-        person
+        person && signup
           ? "This email already has an account, and the password doesn’t match. Enter that account’s password, or use a different email."
           : "Email or password is incorrect.",
         401,
@@ -314,6 +314,47 @@ export function registerCommunities(app: Express, db: Store) {
   app.get("/api/email/verification", (_req, res) =>
     res.json({ required: verification }),
   );
+  // Forgot password: the code from /api/email/code proves the person owns the
+  // email, then the new password replaces the old one and every session ends.
+  app.post("/api/password/reset", async (req, res) => {
+    const b = req.body;
+    const email = String(b.email || "")
+      .trim()
+      .toLowerCase();
+    ensure(
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+      "Enter a valid email address.",
+    );
+    ensure(
+      text(b.password, 200) && b.password.length >= 12,
+      "Use a new password of at least 12 characters.",
+    );
+    ensure(
+      verification,
+      "Password reset needs email verification, which is switched off.",
+      503,
+    );
+    await limit(`reset:${email}`);
+    await verifyEmailCode(email, b.email_code);
+    const person = await db.get(
+      "SELECT id,auth_id FROM identities WHERE email=?",
+      email,
+    );
+    ensure(person, "No account uses this email. Register instead.", 404);
+    if (person.auth_id) {
+      const result = await supabase().auth.admin.updateUserById(
+        person.auth_id,
+        { password: b.password },
+      );
+      ensure(!result.error, "Password update failed. Try again.", 503);
+    }
+    await db.run(
+      "UPDATE identities SET password=?,version=version+1 WHERE id=?",
+      person.auth_id ? "supabase" : hashPassword(b.password),
+      person.id,
+    );
+    res.clearCookie("h360_session", cookie).json({ ok: true });
+  });
   app.post("/api/communities/join", async (req, res) => {
     const b = req.body;
     ensure(

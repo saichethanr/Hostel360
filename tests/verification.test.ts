@@ -257,5 +257,46 @@ test(
       (await call("/email/code", { email: "new@test.local" })).body,
       { required: true, sent: true },
     );
+
+    // Forgot password: the emailed code lets the owner choose a new password,
+    // and sessions signed in with the old one end.
+    const signIn = (pw: string) =>
+      fetch(`http://127.0.0.1:${port}/api/login?community=${code}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Hostel360": "1" },
+        body: JSON.stringify({ email: "new@test.local", password: pw }),
+      });
+    const cookie = (await signIn(password)).headers
+      .get("set-cookie")!
+      .split(";")[0];
+    const membership = () =>
+      fetch(`http://127.0.0.1:${port}/api/membership?community=${code}`, {
+        headers: { Cookie: cookie, "X-Hostel360": "1" },
+      });
+    assert.equal((await membership()).status, 200);
+    const fresh = "ResetTest12!bb";
+    const badReset = await call("/password/reset", {
+      email: "new@test.local",
+      email_code: "999999",
+      password: fresh,
+    });
+    assert.equal(badReset.status, 400);
+    assert.equal(users.get("new@test.local")!.password, password);
+    const reset = await call("/password/reset", {
+      email: "new@test.local",
+      email_code: codes.get("new@test.local"),
+      password: fresh,
+    });
+    assert.equal(reset.status, 200, JSON.stringify(reset.body));
+    assert.equal((await membership()).status, 401);
+    assert.equal((await signIn(password)).status, 401);
+    assert.equal((await signIn(fresh)).status, 200);
+    // A verified email without an account has nothing to reset.
+    const none = await call("/password/reset", {
+      email: "victim@test.local",
+      email_code: codes.get("victim@test.local"),
+      password: fresh,
+    });
+    assert.equal(none.status, 404);
   },
 );

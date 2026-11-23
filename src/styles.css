@@ -3554,3 +3554,7 @@ button.community-choice:focus-visible {
     display: none;
   }
 }
+.forgot-password {
+  display: block;
+  margin: -4px 0 16px;
+}
