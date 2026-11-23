@@ -657,7 +657,7 @@ test("rooms come from the Admin's blocks with capacity; approved details stay fi
     admin = await f.login("Admin", 1),
     manager = await f.login("Manager", 2);
   // Block A: A1 and A2 for one student each, AC is the common room.
-  const layout = [{ gender: "Women", rooms: 3, capacity: 1 }];
+  const layout = [{ gender: "Female", rooms: 3, capacity: 1 }];
   assert.equal(
     (await f.request("/blocks", manager, { blocks: layout })).status,
     403,

@@ -3351,8 +3351,12 @@ button.community-choice:focus-visible {
   min-width: 140px;
 }
 .blocks-settings .blocks-count {
-  max-width: 200px;
+  display: flex;
+  gap: 16px;
   margin-bottom: 16px;
+}
+.blocks-settings .blocks-count .field {
+  width: 180px;
 }
 .blocks-settings td input,
 .blocks-settings td select {

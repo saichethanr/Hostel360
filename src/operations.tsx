@@ -1110,7 +1110,7 @@ export function RoomPicker({
     </>
   );
 }
-// Admin layout: number of blocks (lettered A, B, C…), each Women or Men,
+// Admin layout: how many Female and Male blocks (lettered A, B, C…),
 // with rooms per block and students per room. Single rooms can differ.
 export function BlocksSettings({
   data,
@@ -1119,11 +1119,31 @@ export function BlocksSettings({
   data: Workspace;
   onSaved: (m: string) => Promise<void>;
 }) {
-  const fresh = (): Block => ({ gender: "Women", rooms: 13, capacity: 8 });
+  const fresh = (gender: Block["gender"]): Block => ({
+    gender,
+    rooms: 13,
+    capacity: 8,
+  });
   const saved = parseBlocks(data.settings.blocks);
   const [blocks, setBlocks] = useState<Block[]>(
-    saved.length ? saved : [fresh(), fresh(), fresh()],
+    saved.length ? saved : [fresh("Female"), fresh("Female"), fresh("Male")],
   );
+  const count = (gender: Block["gender"]) =>
+    blocks.filter((b) => b.gender === gender).length;
+  // New blocks take the next letters; removing drops that type's last block,
+  // so existing blocks keep their letters.
+  const setCount = (gender: Block["gender"], n: number) => {
+    let next = [...blocks];
+    while (next.filter((b) => b.gender === gender).length < n)
+      next.push(fresh(gender));
+    while (next.filter((b) => b.gender === gender).length > n)
+      next.splice(
+        next.findLastIndex((b) => b.gender === gender),
+        1,
+      );
+    if (next.length > 26) next = next.slice(0, 26);
+    setBlocks(next);
+  };
   const [open, setOpen] = useState<number | null>(null);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -1162,22 +1182,23 @@ export function BlocksSettings({
           }
         }}
       >
-        <label className="field blocks-count">
-          <span>Number of blocks</span>
-          <input
-            type="number"
-            min="1"
-            max="26"
-            required
-            value={blocks.length}
-            onChange={(e) => {
-              const n = Math.min(26, Math.max(1, number(e.target.value)));
-              setBlocks(
-                Array.from({ length: n }, (_, i) => blocks[i] || fresh()),
-              );
-            }}
-          />
-        </label>
+        <div className="blocks-count">
+          {(["Female", "Male"] as const).map((gender) => (
+            <label key={gender} className="field">
+              <span>{gender} blocks</span>
+              <input
+                type="number"
+                min="0"
+                max="26"
+                required
+                value={count(gender)}
+                onChange={(e) =>
+                  setCount(gender, Math.min(26, number(e.target.value)))
+                }
+              />
+            </label>
+          ))}
+        </div>
         <div className="table-scroll">
           <table>
             <thead>
@@ -1199,18 +1220,9 @@ export function BlocksSettings({
                       <strong>Block {L}</strong>
                     </td>
                     <td>
-                      <select
-                        aria-label={`Block ${L} is for`}
-                        value={b.gender}
-                        onChange={(e) =>
-                          update(i, {
-                            gender: e.target.value as Block["gender"],
-                          })
-                        }
-                      >
-                        <option>Women</option>
-                        <option>Men</option>
-                      </select>
+                      <span className={`badge block-${b.gender.toLowerCase()}`}>
+                        {b.gender}
+                      </span>
                     </td>
                     <td>
                       <input
@@ -1290,8 +1302,7 @@ export function BlocksSettings({
           </div>
         )}
         <p className="notice">
-          {blocks.filter((b) => b.gender === "Women").length} Women blocks ·{" "}
-          {blocks.filter((b) => b.gender === "Men").length} Men blocks ·{" "}
+          {count("Female")} Female blocks · {count("Male")} Male blocks ·{" "}
           {blocks.reduce((sum, b, i) => sum + beds(b, i), 0)} beds in total.
         </p>
         {error && <p className="notice danger">{error}</p>}

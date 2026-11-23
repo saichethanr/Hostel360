@@ -517,7 +517,7 @@ export function registerOperations(
         blocks.every(
           (b: Row, i: number) =>
             b &&
-            ["Women", "Men"].includes(b.gender) &&
+            ["Female", "Male"].includes(b.gender) &&
             Number.isInteger(b.rooms) &&
             b.rooms >= 2 &&
             b.rooms <= 100 &&
@@ -535,7 +535,7 @@ export function registerOperations(
                     (c as number) <= 50,
                 ))),
         ),
-      "Each block needs Women or Men, 2 to 100 rooms and 1 to 50 students per room.",
+      "Each block needs Female or Male, 2 to 100 rooms and 1 to 50 students per room.",
     );
     const clean = blocks.map((b: Row) => ({
       gender: b.gender,

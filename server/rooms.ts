@@ -2,7 +2,7 @@
 // Blocks are lettered A, B, C… in order. A block with 13 rooms has A1–A12
 // for students and AC, its common room, which is never allocated.
 export type Block = {
-  gender: "Women" | "Men";
+  gender: "Female" | "Male";
   rooms: number;
   capacity: number;
   // Rooms whose capacity differs from the block's, such as { A3: 6 }.
