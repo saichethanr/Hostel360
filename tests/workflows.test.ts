@@ -17,7 +17,7 @@ async function fixture(t: TestContext) {
       "INSERT INTO students (id,code,roll,name,department,year,room,phone,joined) VALUES (?,?,?,?,?,?,?,?,?)",
     ).run(
       id,
-      `H360-${id}`,
+      `JSSPDA-2025-000${id}`,
       `ROLL-${id}`,
       `Student ${id}`,
       "Computer Science",
@@ -480,7 +480,7 @@ test("student registration retains both identifiers and rejects duplicate roll n
   const w: Workspace = (await f.request("/workspace", manager)).body;
   assert.equal(w.students.length, 3);
   const student = w.students.find((s) => s.id === created.body.id)!;
-  assert.equal(student.code, "H360-0003");
+  assert.equal(student.code, "JSSPDA-2025-0003");
   assert.equal(student.roll, "UNIQUE-ROLL");
   assert.equal(student.guardian, "Test Guardian");
   assert.equal(student.status, "Active");

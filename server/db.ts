@@ -4,6 +4,11 @@ import { dirname } from "node:path";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { extensions, addedColumns } from "./schema.js";
 
+// Student IDs: JSSPDA, the joining year, then the student's permanent number,
+// which never repeats, so every student keeps a unique ID across years.
+export const studentCode = (id: number, joined: string) =>
+  `JSSPDA-${joined.slice(0, 4)}-${String(id).padStart(4, "0")}`;
+
 export function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
@@ -180,7 +185,7 @@ function seedDemo(db: DatabaseSync) {
         )
         .run(
           i + 1,
-          `H360-${String(i + 1).padStart(4, "0")}`,
+          studentCode(i + 1, String(now.getFullYear())),
           `GF${now.getFullYear()}${String(i + 1).padStart(3, "0")}`,
           name,
           departments[i % 4],

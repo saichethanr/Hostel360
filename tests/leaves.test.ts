@@ -12,7 +12,7 @@ const url =
   process.env.COMMUNITY_TEST_DATABASE_URL;
 
 test(
-  "students apply for leave, a Warden approved by the Admin decides it, and approved days stay Leave in attendance",
+  "students apply for leave, a Warden or the Admin decides it, and approved days stay Leave in attendance",
   { skip: !url },
   async (t) => {
     const owner = new pg.Pool({ connectionString: url });
@@ -237,12 +237,14 @@ test(
       [["Medical", "Pending", "certificate.pdf"]],
     );
     assert.equal((await request("/workspace", warden)).body.pending_leaves, 2);
+    assert.equal((await request("/workspace", admin)).body.pending_leaves, 2);
     const all = (await request("/leaves", warden)).body;
     const ashaLeave = all.find((l: Row) => l.student_id === asha.id),
       binaLeave = all.find((l: Row) => l.student_id === bina.id);
+    // Students cannot decide leave, not even their own.
     assert.equal(
       (
-        await request(`/leaves/${ashaLeave.id}/review`, admin, {
+        await request(`/leaves/${binaLeave.id}/review`, bina.cookie, {
           status: "Approved",
         })
       ).status,
@@ -266,7 +268,8 @@ test(
     );
     assert.equal(
       (
-        await request(`/leaves/${binaLeave.id}/review`, warden, {
+        // The Admin can decide leave too.
+        await request(`/leaves/${binaLeave.id}/review`, admin, {
           status: "Rejected",
           reason: "Certificate is unreadable",
         })

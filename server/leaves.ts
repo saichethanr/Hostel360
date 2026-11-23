@@ -22,11 +22,15 @@ export function leaveDays(start: string, end: string) {
 }
 
 // Students apply for casual or medical leave (medical needs a document as
-// proof). A Warden approves or rejects; approved days are marked Leave in
+// proof). A Warden or Admin approves or rejects; approved days are marked Leave in
 // attendance, so they are never charged as mess days.
 export function registerLeaves(app: Express, db: Store, audit: Audit) {
   const warden = (res: Response) =>
-    ensure(me(res).role === "Warden", "Only a Warden can decide leave.", 403);
+    ensure(
+      ["Warden", "Admin"].includes(me(res).role),
+      "Only a Warden or Admin can decide leave.",
+      403,
+    );
   // Finalized mess months are closed; leave cannot change their attendance.
   const unlocked = async (start: string, end: string) => {
     const months = [

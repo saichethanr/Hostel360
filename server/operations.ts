@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
-import { hashPassword } from "./db.js";
+import { hashPassword, studentCode } from "./db.js";
 import { archive, saveBackup } from "./backup.js";
 import { type Store, type Row } from "./store.js";
 import { blockLetter, parseBlocks, roomList } from "./rooms.js";
@@ -276,7 +276,7 @@ export function registerOperations(
     studentInput(b);
     await checkRoom(b.room.trim());
     const [next] = await db.studentIds(1);
-    const code = `H360-${String(next).padStart(4, "0")}`;
+    const code = studentCode(next, b.joined);
     // The roll column stays unique; without a college ID it holds the code.
     const roll = (b.roll || "").trim() || code;
     ensure(
@@ -949,7 +949,7 @@ export function registerOperations(
           ],
           rows.map((r, i) => [
             ids[i],
-            `H360-${String(ids[i]).padStart(4, "0")}`,
+            studentCode(ids[i], r.joined),
             r.roll.trim(),
             r.name.trim(),
             r.department.trim(),

@@ -118,7 +118,7 @@ const pageDescriptions: Record<Page, string> = {
   "Reports & audit": "The numbers you need. The history you can trust.",
   Operations:
     "Admissions, accounts and the details that keep your hostel running.",
-  Leave: "Casual and medical leave, approved by the Warden.",
+  Leave: "Casual and medical leave, approved by the Warden or Admin.",
   "My application": "Your application, details and admission decision.",
   "My account": "Keep your workspace access secure.",
   Settings: "Make the hostel workspace feel at home.",
@@ -286,7 +286,7 @@ function Login({
             <div className="illustration-sun" />
             <div className="illustration-tree tree-one" />
             <div className="illustration-building">
-              <div className="building-roof">H360</div>
+              <div className="building-roof">JSS</div>
               <div className="windows">
                 {Array.from({ length: 12 }, (_, i) => (
                   <i key={i} />
@@ -1735,7 +1735,7 @@ function AttendancePage({
 }) {
   const [date, setDate] = useState(data.today);
   const [entries, setEntries] = useState<Record<number, string>>({});
-  // Approved by the Warden: these students stay on Leave for the day.
+  // Approved by the Warden or Admin: these students stay on Leave for the day.
   const [onLeave, setOnLeave] = useState<Set<number>>(new Set());
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);

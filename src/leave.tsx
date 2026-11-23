@@ -45,7 +45,7 @@ const readFile = (file: File) =>
     reader.readAsDataURL(file);
   });
 
-// One page per role: students apply and see their own days; the Warden
+// One page per role: students apply and see their own days; the Warden or Admin
 // decides requests; Admin and Managers see who is on leave each day.
 export function LeavePage({
   data,
@@ -84,7 +84,9 @@ export function LeavePage({
       {role === "Student" && (
         <ApplyLeave data={data} leaves={leaves} onSaved={saved} />
       )}
-      {role === "Warden" && <Decisions leaves={leaves} onSaved={saved} />}
+      {(role === "Warden" || role === "Admin") && (
+        <Decisions leaves={leaves} onSaved={saved} />
+      )}
       <LeaveCalendar
         today={data.today}
         leaves={leaves}
@@ -140,7 +142,9 @@ function ApplyLeave({
       setType("Casual");
       setStart(shift(data.today, 1));
       setEnd(shift(data.today, 1));
-      await onSaved("Leave request sent. The Warden has been notified.");
+      await onSaved(
+        "Leave request sent. The Warden and Admin have been notified.",
+      );
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -153,8 +157,8 @@ function ApplyLeave({
         <div>
           <h2>Apply for leave</h2>
           <p>
-            The Warden reviews every request. Approved days are marked as Leave
-            in attendance, so they are not charged for mess.
+            The Warden or Admin reviews every request. Approved days are marked
+            as Leave in attendance, so they are not charged for mess.
           </p>
         </div>
       </div>
@@ -504,7 +508,7 @@ function LeaveCalendar({
           <i className="approved" /> Approved
         </span>
         <span>
-          <i className="pending" /> Waiting for the Warden
+          <i className="pending" /> Waiting for approval
         </span>
         {own && (
           <span>
@@ -607,7 +611,9 @@ function LeaveHistory({
                 <td>
                   {l.reason}
                   {l.decision_reason && (
-                    <small>Warden: {l.decision_reason}</small>
+                    <small>
+                      {l.decided_name || "Reviewer"}: {l.decision_reason}
+                    </small>
                   )}
                 </td>
                 <td>

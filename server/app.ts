@@ -367,7 +367,7 @@ export function createApp(
       credits: cs,
       attendance,
       audit: events,
-      ...(db.communities && warden
+      ...(db.communities && (warden || user.role === "Admin")
         ? {
             pending_leaves: (
               await db.get(
