@@ -79,7 +79,7 @@ export function TokenCard({ t, children }: { t: Token; children?: ReactNode }) {
       <div className="token-meal">
         {t.meal} · {money(t.amount)}
       </div>
-      <div className="token-name">{t.name}</div>
+      {t.name && <div className="token-name">{t.name}</div>}
       {t.status === "Open" && (
         <div className="token-time">
           Valid until {time(t.expires_at)} · {left(t.expires_at, nowMs)} left
@@ -259,8 +259,9 @@ function Buy({ onBought }: { onBought: (key: string) => void }) {
         <div className="eyebrow">MEAL TOKEN</div>
         <h1 className="token-title">Buy a meal token</h1>
         <p>
-          {menu.hostel || HOSTEL.name} mess. Pay with UPI or card; your token
-          opens right away and is valid for {menu.hours} hours.
+          {menu.hostel || HOSTEL.name} mess. Choose your meal and pay with UPI
+          or card. You get a token number right away, valid for {menu.hours}{" "}
+          hours.
         </p>
         {!menu.meals.length ? (
           <p className="notice">Meal tokens are not on sale right now.</p>
@@ -274,9 +275,6 @@ function Buy({ onBought }: { onBought: (key: string) => void }) {
             className="settings-form token-form"
             onSubmit={async (e) => {
               e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              const name = String(f.get("name") || "").trim(),
-                phone = String(f.get("phone") || "").trim();
               setBusy(true);
               setError("");
               try {
@@ -286,7 +284,7 @@ function Buy({ onBought }: { onBought: (key: string) => void }) {
                   key_id: string;
                   order_id: string;
                   amount: number;
-                }>("/public/tokens", { meal, name, phone });
+                }>("/public/tokens", { meal });
                 saveKey(order.key);
                 new window.Razorpay!({
                   key: order.key_id,
@@ -295,7 +293,6 @@ function Buy({ onBought }: { onBought: (key: string) => void }) {
                   currency: "INR",
                   name: `${HOSTEL.short} Mess`,
                   description: `${meal} token`,
-                  prefill: { name, contact: phone },
                   method: {
                     card: true,
                     upi: true,
@@ -346,14 +343,6 @@ function Buy({ onBought }: { onBought: (key: string) => void }) {
                 </label>
               ))}
             </fieldset>
-            <label className="field">
-              <span>Your name</span>
-              <input name="name" required maxLength={80} autoComplete="name" />
-            </label>
-            <label className="field">
-              <span>Phone number</span>
-              <input name="phone" type="tel" required autoComplete="tel" />
-            </label>
             {error && (
               <p className="notice danger" role="alert">
                 {error}
@@ -515,7 +504,7 @@ export function TokensPage({
     if (
       !(await ask({
         title: `Close ${t.number}?`,
-        body: `${t.meal} for ${t.name}. Close it once the meal is served; it cannot be reopened.`,
+        body: `${t.meal} for ${t.name || "a visitor"}. Close it once the meal is served; it cannot be reopened.`,
         confirm: "Close token",
       }))
     )
@@ -573,7 +562,8 @@ export function TokensPage({
           <strong>New tokens opened</strong>
           {fresh.map((t) => (
             <span key={t.id}>
-              {t.number} · {t.meal} · {t.name} · {time(t.opened_at)}
+              {t.number} · {t.meal} · {t.name || "Visitor"} ·{" "}
+              {time(t.opened_at)}
             </span>
           ))}
           <button className="text-button" onClick={() => setFresh([])}>
@@ -662,7 +652,7 @@ export function TokensPage({
                   </td>
                   <td>{t.meal}</td>
                   <td>
-                    {t.name}
+                    {t.name || "Visitor"}
                     <small className="cell-sub">{t.phone || "—"}</small>
                   </td>
                   <td>
@@ -730,14 +720,7 @@ export function TokensPage({
         </div>
         {issued && (
           <div className="token-issued">
-            <TokenCard t={issued}>
-              <button
-                className="button secondary"
-                onClick={() => window.print()}
-              >
-                <Printer size={15} /> Print token
-              </button>
-            </TokenCard>
+            <TokenCard t={issued} />
           </div>
         )}
         <form
@@ -782,8 +765,8 @@ export function TokensPage({
               </select>
             </label>
             <label className="field">
-              <span>Visitor name</span>
-              <input name="name" required maxLength={80} />
+              <span>Visitor name — optional</span>
+              <input name="name" maxLength={80} />
             </label>
             <label className="field">
               <span>Phone — optional</span>

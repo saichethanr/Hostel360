@@ -88,6 +88,7 @@ test(
                   status: "captured",
                   amount: o.amount,
                   method: "upi",
+                  contact: "+919000000001",
                 },
               ]
             : [],
@@ -204,19 +205,12 @@ test(
     // A visitor buys lunch from the QR page; the price comes from the Admin,
     // not from the request.
     assert.equal(
-      (
-        await request("/public/tokens", "", {
-          meal: "Dinner",
-          name: "Visitor",
-          phone: "9000000001",
-        })
-      ).status,
+      (await request("/public/tokens", "", { meal: "Dinner" })).status,
       409,
     );
+    // No name or phone: paying is all a visitor does.
     const bought = await request("/public/tokens", "", {
       meal: "Lunch",
-      name: "Ravi Visitor",
-      phone: "9000000001",
       amount: 1,
     });
     assert.equal(bought.status, 201, JSON.stringify(bought.body));
@@ -268,7 +262,7 @@ test(
     const list = (await request("/tokens", manager)).body.tokens;
     assert.deepEqual(
       list.map((x: Row) => [x.number, x.status, x.phone, x.mode]),
-      [[token.number, "Open", "9000000001", "Online"]],
+      [[token.number, "Open", "+919000000001", "Online"]],
     );
     assert.equal((await request("/workspace", manager)).body.open_tokens, 1);
 
@@ -283,9 +277,9 @@ test(
       ).status,
       400,
     );
+    // Name and phone are optional at the counter too.
     const counter = await request("/tokens", manager, {
       meal: "Breakfast",
-      name: "Elder visitor",
       mode: "Cash",
     });
     assert.equal(counter.status, 201, JSON.stringify(counter.body));

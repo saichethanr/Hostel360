@@ -61,13 +61,14 @@ export function registerTokens(
       (await db.get("SELECT value FROM settings WHERE key='meal_prices'"))
         ?.value,
     );
-  const details = (b: Row, phoneRequired: boolean) => {
+  const details = (b: Row) => {
     ensure(meals.includes(b.meal), "Choose a meal.");
-    ensure(text(b.name, 80), "Enter the name for the token.");
     ensure(
-      phoneRequired
-        ? phonePattern.test(b.phone || "")
-        : !b.phone || phonePattern.test(b.phone),
+      !b.name || (typeof b.name === "string" && b.name.length <= 80),
+      "Keep the name under 80 characters.",
+    );
+    ensure(
+      !b.phone || phonePattern.test(b.phone),
       "Enter a valid phone number.",
     );
   };
@@ -121,8 +122,9 @@ export function registerTokens(
   });
 
   app.post("/api/public/tokens", async (req, res) => {
+    // Visitors only choose the meal and pay; the token number is the receipt.
     const b = req.body;
-    details(b, true);
+    ensure(meals.includes(b.meal), "Choose a meal.");
     const amount = (await prices())[b.meal as (typeof meals)[number]];
     ensure(amount > 0, "Tokens for this meal are not on sale.", 409);
     const c = gateway.credentials();
@@ -143,12 +145,10 @@ export function registerTokens(
     );
     const key = randomBytes(18).toString("base64url");
     const token = await db.get(
-      "INSERT INTO meal_tokens (access_key,meal,amount,name,phone,mode,status,key_id,created_at) VALUES (?,?,?,?,?,'Online','Pending',?,?) RETURNING id",
+      "INSERT INTO meal_tokens (access_key,meal,amount,name,phone,mode,status,key_id,created_at) VALUES (?,?,?,'','','Online','Pending',?,?) RETURNING id",
       key,
       b.meal,
       amount,
-      b.name.trim(),
-      b.phone.trim(),
       c.key_id,
       now(),
     );
@@ -191,8 +191,15 @@ export function registerTokens(
       );
       if (current.status !== "Pending") return;
       await open(t.id, { provider_payment_id: paid.id });
+      // Keep the phone Razorpay's checkout collected, for staff records.
+      if (typeof paid.contact === "string")
+        await db.run(
+          "UPDATE meal_tokens SET phone=? WHERE id=? AND phone=''",
+          paid.contact.slice(0, 20),
+          t.id,
+        );
       await audit(
-        { name: t.name },
+        { name: "Visitor" },
         "Meal token bought online",
         `T-${String(t.id).padStart(4, "0")} · ${t.meal} · ${t.amount / 100} INR · ${paid.id}`,
       );
@@ -305,7 +312,7 @@ export function registerTokens(
   app.post("/api/tokens", async (req, res) => {
     staffOnly(res);
     const b = req.body;
-    details(b, false);
+    details(b);
     ensure(["Cash", "UPI"].includes(b.mode), "Choose Cash or UPI.");
     ensure(
       b.mode === "Cash" || text(b.reference, 120),
@@ -319,7 +326,7 @@ export function registerTokens(
         randomBytes(18).toString("base64url"),
         b.meal,
         amount,
-        b.name.trim(),
+        String(b.name || "").trim(),
         String(b.phone || "").trim(),
         b.mode,
         String(b.reference || "").trim(),

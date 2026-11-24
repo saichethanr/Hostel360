@@ -466,7 +466,9 @@ function App() {
         .then(({ open, newest: t }) => {
           setLiveTokens(open);
           if (newest !== undefined && t && t.id > newest)
-            setToast(`New meal token ${t.number} · ${t.meal} · ${t.name}`);
+            setToast(
+              `New meal token ${t.number} · ${t.meal}${t.name ? ` · ${t.name}` : ""}`,
+            );
           newest = t?.id ?? 0;
         })
         .catch(() => undefined);
