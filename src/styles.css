@@ -3820,3 +3820,313 @@ button.community-choice:focus-visible {
 .appeal-cta > p {
   margin-bottom: 16px;
 }
+
+/* Mess challan: the hostel's pink "Duplicate for Hostel" receipt. It stays
+   pink paper in both themes, like the printed form. */
+.challan {
+  position: relative;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 26px 28px 22px;
+  background: #fbe3ea;
+  color: #2a1f24;
+  border: 1px solid #e3b7c4;
+  border-radius: 4px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.challan-no {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.challan-no strong {
+  color: #b3122e;
+  font-size: 17px;
+  margin-left: 4px;
+}
+.challan-no small {
+  font-style: italic;
+}
+.challan header {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 1px;
+  margin: 14px 0 12px;
+  line-height: 1.35;
+}
+.challan header span {
+  font-size: 13px;
+}
+.challan-account {
+  margin-top: 4px;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+.challan p {
+  margin: 6px 0;
+  color: inherit;
+}
+.challan u {
+  text-decoration: none;
+  border-bottom: 1px dotted #6b4a55;
+  padding: 0 6px;
+  font-family: system-ui, sans-serif;
+  font-size: 13.5px;
+}
+.challan p small {
+  color: #6b4a55;
+  font-family: system-ui, sans-serif;
+}
+.challan-date {
+  text-align: right;
+}
+.challan table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  min-width: 0;
+}
+.challan th,
+.challan td,
+.challan tr:last-child td {
+  border: 1px solid #6b4a55;
+  padding: 6px 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 13.5px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.challan th:nth-child(n + 2),
+.challan td:nth-child(n + 2) {
+  width: 78px;
+  text-align: right;
+  font-family: system-ui, sans-serif;
+}
+.challan th:first-child {
+  text-align: left;
+}
+.challan td em {
+  display: block;
+  font-size: 12px;
+  color: #6b4a55;
+  font-family: system-ui, sans-serif;
+}
+.challan-total td {
+  font-weight: 700;
+}
+.challan-void {
+  color: #b3122e;
+  font-weight: 700;
+}
+.challan-sign {
+  display: grid;
+  justify-items: end;
+  margin-top: 26px;
+}
+.challan-sign span {
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+.challan-sign small {
+  border-top: 1px solid #6b4a55;
+  padding-top: 3px;
+  font-size: 12px;
+}
+.challan-mode {
+  font-family: system-ui, sans-serif;
+  font-size: 11.5px;
+  color: #6b4a55;
+  text-align: center;
+  margin-top: 14px !important;
+}
+
+/* Meal tokens */
+.token-card {
+  --tone: #16834f;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 26px 20px;
+  border-radius: 18px;
+  background: var(--tone);
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.12);
+}
+.token-closed {
+  --tone: #5d6560;
+}
+.token-expired {
+  --tone: #b46a0c;
+}
+.token-pending {
+  --tone: #2e5f8a;
+}
+.token-state {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: 15px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.2);
+}
+.token-number {
+  font-size: 54px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+}
+.token-meal {
+  font-size: 20px;
+  font-weight: 600;
+}
+.token-name {
+  font-size: 16px;
+  opacity: 0.9;
+}
+.token-time {
+  font-size: 14px;
+  opacity: 0.92;
+}
+.token-card .button.secondary {
+  margin-top: 8px;
+}
+.token-title {
+  margin: 4px 0 6px;
+  font-size: 26px;
+}
+.token-form {
+  margin-top: 18px;
+  padding: 0;
+}
+.token-form .field {
+  margin-bottom: 16px;
+}
+.token-meals {
+  border: 0;
+  padding: 0;
+  margin: 0 0 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.token-meals legend {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.token-meals label {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.token-meals label.selected {
+  border-color: var(--green);
+  outline: 2px solid var(--green);
+}
+.token-meals input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.token-meals strong {
+  font-size: 19px;
+}
+.token-meals label span {
+  font-size: 14px;
+}
+.token-pay {
+  width: 100%;
+  justify-content: center;
+  min-height: 48px;
+  font-size: 16px;
+}
+.token-mine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.token-tools {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.token-tools .notice {
+  margin: 0;
+}
+.token-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 23px 14px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.token-search input {
+  border: 0 !important;
+  background: transparent !important;
+  flex: 1;
+  min-height: 42px;
+  outline: 0;
+}
+.token-fresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 14px 23px;
+  border-left: 4px solid #16834f;
+}
+.token-fresh .text-button {
+  margin-left: auto;
+}
+.badge.token-badge-open {
+  background: #dcf3e5;
+  color: #11683d;
+}
+.badge.token-badge-expired {
+  background: #fdebd2;
+  color: #8a4f06;
+}
+.token-issued {
+  max-width: 380px;
+  margin: 0 23px 18px;
+}
+.token-poster {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+}
+.token-poster h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+.token-poster img {
+  background: #fff;
+  padding: 10px;
+  border-radius: 12px;
+}
+.token-poster .modal-actions {
+  justify-self: stretch;
+}
+@media print {
+  .token-poster .modal-actions {
+    display: none !important;
+  }
+  .challan {
+    border: 0;
+  }
+}

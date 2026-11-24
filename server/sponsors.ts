@@ -14,6 +14,8 @@ import {
   categories,
 } from "./http.js";
 import { storeDocument } from "./operations.js";
+import { challanHtml, escape, periodRange, rupeesInWords } from "./challan.js";
+import { sendMail } from "./mailer.js";
 import type { Gateway } from "./gateway.js";
 
 type Actor = { id: number; name: string };
@@ -25,7 +27,7 @@ type Deps = {
     detail: string,
   ) => Promise<unknown>;
   demands: (sid?: number) => Promise<Row[]>;
-  record: (body: Row, actor: Actor) => Promise<{ receipt: string }>;
+  record: (body: Row, actor: Actor) => Promise<{ id: number; receipt: string }>;
   gateway: Gateway;
 };
 
@@ -129,7 +131,7 @@ export function registerSponsors(app: Express, deps: Deps) {
         { demand_id: d.id, amount: part },
       ]);
     }
-    const receipts: string[] = [];
+    const receipts: { id: number; receipt: string }[] = [];
     for (const category of categories.filter((c) => byCategory.has(c))) {
       const allocations = byCategory.get(category)!;
       const paid = await record(
@@ -144,9 +146,59 @@ export function registerSponsors(app: Express, deps: Deps) {
         },
         actor,
       );
-      receipts.push(paid.receipt);
+      receipts.push({ id: paid.id, receipt: paid.receipt });
     }
     return receipts;
+  };
+  // Mess receipts paid by a sponsor go to the student by email as the hostel
+  // mess challan. Runs after the payment is saved; a failed email is logged
+  // and never undoes the payment.
+  const emailMessReceipts = async (ids: number[]) => {
+    for (const id of ids) {
+      try {
+        const p = await db.get(
+          "SELECT * FROM payments WHERE id=? AND category='Mess'",
+          id,
+        );
+        if (!p) continue;
+        const to = (
+          await db.get(
+            "SELECT email FROM users WHERE student_id=? AND role='Student' AND active=1",
+            p.student_id,
+          )
+        )?.email;
+        if (!to) continue;
+        const snap = JSON.parse(p.snapshot || "{}");
+        const periods = (snap.allocations ?? []).map((a: Row) => a.period);
+        const [y, m, d] = p.date.split("-");
+        const challan = {
+          receipt: p.receipt,
+          date: `${d}/${m}/${y}`,
+          name: snap.name,
+          className: [snap.year && `Year ${snap.year}`, snap.department]
+            .filter(Boolean)
+            .join(" · "),
+          // Sponsor payments have no UPI reference of their own.
+          reference: p.mode === "Sponsor" ? "" : p.reference,
+          periods,
+          amount: p.amount,
+          remitter: p.reference.replace(/^Sponsor: /, ""),
+        };
+        await sendMail({
+          to,
+          subject: `JSS PDA Hostel – mess fee receipt ${p.receipt}`,
+          html: `<p style="font-family:Arial,sans-serif">Dear ${escape(snap.name)},</p>
+<p style="font-family:Arial,sans-serif">A sponsor, ${escape(challan.remitter)}, has paid your hostel mess fees for ${periodRange(periods)}. Your receipt is below and in the Receipts page of the JSS PDA Hostel app.</p>
+${challanHtml(challan)}`,
+          text: `Dear ${snap.name}, a sponsor (${challan.remitter}) paid your hostel mess fees for ${periodRange(periods)}: Rs. ${p.amount / 100} (${rupeesInWords(p.amount)}). Receipt ${p.receipt}, dated ${challan.date}. You can see it in the Receipts page of the JSS PDA Hostel app.`,
+        });
+      } catch (e) {
+        console.error("Mess receipt email failed", {
+          payment: id,
+          error: (e as Error).message,
+        });
+      }
+    }
   };
   const grants = async (sponsorId?: number) =>
     db.all(
@@ -328,7 +380,7 @@ export function registerSponsors(app: Express, deps: Deps) {
         `This sponsor's wallet has ${sponsor.balance / 100} INR, less than the ${total / 100} INR chosen.`,
         409,
       );
-      const receipts: string[] = [];
+      const receipts: { id: number; receipt: string }[] = [];
       for (const g of list)
         receipts.push(
           ...(await giveGrant(sponsor, g.student_id, g.amount, actor)),
@@ -338,9 +390,10 @@ export function registerSponsors(app: Express, deps: Deps) {
         "Sponsor wallet allocated",
         `${sponsor.name} · ${list.length} student(s) · ${total / 100} INR`,
       );
-      return { receipts };
+      return receipts;
     });
-    res.status(201).json(result);
+    await emailMessReceipts(result.map((r) => r.id));
+    res.status(201).json({ receipts: result.map((r) => r.receipt) });
   });
 
   // Sponsorship profiles: the Admin lists a student with dues and explains
@@ -614,7 +667,8 @@ export function registerSponsors(app: Express, deps: Deps) {
       return items.some((p) => p.status === "authorized")
         ? "authorized"
         : "open";
-    return db.transaction(async () => {
+    const ids: number[] = [];
+    const status = await db.transaction(async () => {
       const current = await db.get(
         "SELECT status FROM sponsor_orders WHERE id=?",
         o.id,
@@ -648,22 +702,25 @@ export function registerSponsors(app: Express, deps: Deps) {
         );
         const amount = Math.min(owed, o.amount);
         if (amount > 0)
-          await giveGrant(sponsor, o.student_id, amount, {
+          for (const r of await giveGrant(sponsor, o.student_id, amount, {
             id: o.user_id,
             name: sponsor.name,
-          });
+          }))
+            ids.push(r.id);
       }
       return "paid";
     });
+    await emailMessReceipts(ids);
+    return status;
   };
-  gateway.sponsorOrder = async (providerOrderId, keyId) => {
+  gateway.otherOrders.push(async (providerOrderId, keyId) => {
     const o = await db.get(
       "SELECT * FROM sponsor_orders WHERE provider_order_id=? AND key_id=?",
       providerOrderId,
       keyId,
     );
     if (o) await settle(o);
-  };
+  });
 
   app.post("/api/sponsorship/contribute/:id/confirm", async (req, res) => {
     sponsorOnly(res);

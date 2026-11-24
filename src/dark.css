@@ -672,3 +672,14 @@
 :where(:root[data-theme="dark"]) .sponsor-due strong {
   color: hsl(8 60% 72%);
 }
+:root[data-theme="dark"] .badge.token-badge-open {
+  background: hsl(145 40% 20%);
+  color: hsl(145 55% 80%);
+}
+:root[data-theme="dark"] .badge.token-badge-expired {
+  background: hsl(35 50% 20%);
+  color: hsl(35 80% 80%);
+}
+:root[data-theme="dark"] .token-search {
+  border-color: hsl(100 9% 24%);
+}

@@ -37,6 +37,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Ticket,
   Users,
   Wallet,
   X,
@@ -80,6 +81,8 @@ import {
   BlocksSettings,
   RoomPicker,
 } from "./operations";
+import { TokensPage, MealPricesSettings, PublicTokenPage } from "./tokens";
+import { MessChallan } from "./challan";
 import "./styles.css";
 import "./dark.css";
 
@@ -94,6 +97,7 @@ type Page =
   | "Operations"
   | "Leave"
   | "Sponsorship"
+  | "Meal tokens"
   | "My application"
   | "My account"
   | "Settings";
@@ -108,6 +112,7 @@ const pageIcons: Record<Page, LucideIcon> = {
   Operations: Building2,
   Leave: CalendarDays,
   Sponsorship: HeartHandshake,
+  "Meal tokens": Ticket,
   "My application": FileCheck2,
   "My account": ShieldCheck,
   Settings: Settings2,
@@ -123,6 +128,7 @@ const pageDescriptions: Record<Page, string> = {
   Operations:
     "Admissions, accounts and the details that keep your hostel running.",
   Leave: "Casual and medical leave, approved by the Warden or Admin.",
+  "Meal tokens": "Visitor meal tokens: sell, verify and close them.",
   Sponsorship: "Sponsors helping students with their hostel fees.",
   "My application": "Your application, details and admission decision.",
   "My account": "Keep your workspace access secure.",
@@ -441,6 +447,33 @@ function App() {
       .catch((e) => setFatal(errorMessage(e)))
       .finally(() => setLoading(false));
   }, []);
+  // Staff hear about new meal tokens on every page, not just Meal tokens.
+  const [liveTokens, setLiveTokens] = useState<number | null>(null);
+  const staffRole = data && ["Admin", "Manager"].includes(data.user.role);
+  useEffect(() => {
+    if (!staffRole) return;
+    let newest: number | undefined;
+    const check = () =>
+      api<{
+        open: number;
+        newest: {
+          id: number;
+          number: string;
+          meal: string;
+          name: string;
+        } | null;
+      }>("/tokens/live")
+        .then(({ open, newest: t }) => {
+          setLiveTokens(open);
+          if (newest !== undefined && t && t.id > newest)
+            setToast(`New meal token ${t.number} · ${t.meal} · ${t.name}`);
+          newest = t?.id ?? 0;
+        })
+        .catch(() => undefined);
+    void check();
+    const timer = setInterval(check, 15_000);
+    return () => clearInterval(timer);
+  }, [staffRole]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 4500);
@@ -534,6 +567,7 @@ function App() {
             "Fee demands",
             "Payments",
             "Receipts",
+            "Meal tokens",
             ...(isAdmin ? ["Sponsorship" as Page] : []),
             "Reports & audit",
             "Operations",
@@ -613,6 +647,12 @@ function App() {
                       {data.pending_leaves}
                     </span>
                   )}
+                  {item === "Meal tokens" &&
+                    !!(liveTokens ?? data.open_tokens) && (
+                      <span className="nav-count" title="Meal tokens open now">
+                        {liveTokens ?? data.open_tokens}
+                      </span>
+                    )}
                   {item === "Operations" && !!data.pending_members && (
                     <span
                       className="nav-count alert"
@@ -720,6 +760,7 @@ function App() {
             </div>
           </div>
           {page === "Leave" && <LeavePage data={data} onSaved={saved} />}
+          {page === "Meal tokens" && <TokensPage data={data} onSaved={saved} />}
           {page === "Sponsorship" &&
             (isAdmin ? (
               <SponsorshipAdmin data={data} onSaved={saved} />
@@ -2902,112 +2943,116 @@ function ReceiptModal({
       onClose={onClose}
       wide
     >
-      <div className="receipt-paper">
-        <div className="receipt-brand">
-          <div className="small-icon">
-            <Building2 size={25} />
+      {r.category === "Mess" ? (
+        <MessChallan r={r} />
+      ) : (
+        <div className="receipt-paper">
+          <div className="receipt-brand">
+            <div className="small-icon">
+              <Building2 size={25} />
+            </div>
+            <div>
+              <h2>{r.hostel}</h2>
+              <p>
+                {HOSTEL.short} · {r.category} payment receipt
+              </p>
+            </div>
+            <Badge
+              tone={r.reversed_at || r.refunded_amount > 0 ? "amber" : "green"}
+            >
+              {r.reversed_at
+                ? "Reversed"
+                : r.refunded_amount > 0
+                  ? "Partly refunded"
+                  : "Received"}
+            </Badge>
           </div>
-          <div>
-            <h2>{r.hostel}</h2>
-            <p>
-              {HOSTEL.short} · {r.category} payment receipt
-            </p>
+          {r.reversed_at && (
+            <div className="notice danger">
+              REVERSED · {dateName(r.reversed_at)} · {r.reversal_reason}. This
+              receipt is retained for audit and is no longer a valid collection.
+            </div>
+          )}
+          {demo && (
+            <div className="receipt-demo">
+              DEMO RECEIPT · FICTIONAL DATA · NOT VALID FOR ACCOUNTING
+            </div>
+          )}
+          <div className="receipt-meta">
+            <div>
+              <small>RECEIVED FROM</small>
+              <h3>{r.name}</h3>
+              <span>{r.code}</span>
+            </div>
+            <div>
+              <small>RECEIPT NUMBER</small>
+              <strong>{r.receipt}</strong>
+              <span>{dateName(r.date)}</span>
+            </div>
           </div>
-          <Badge
-            tone={r.reversed_at || r.refunded_amount > 0 ? "amber" : "green"}
-          >
-            {r.reversed_at
-              ? "Reversed"
-              : r.refunded_amount > 0
-                ? "Partly refunded"
-                : "Received"}
-          </Badge>
-        </div>
-        {r.reversed_at && (
-          <div className="notice danger">
-            REVERSED · {dateName(r.reversed_at)} · {r.reversal_reason}. This
-            receipt is retained for audit and is no longer a valid collection.
-          </div>
-        )}
-        {demo && (
-          <div className="receipt-demo">
-            DEMO RECEIPT · FICTIONAL DATA · NOT VALID FOR ACCOUNTING
-          </div>
-        )}
-        <div className="receipt-meta">
-          <div>
-            <small>RECEIVED FROM</small>
-            <h3>{r.name}</h3>
-            <span>{r.code}</span>
-          </div>
-          <div>
-            <small>RECEIPT NUMBER</small>
-            <strong>{r.receipt}</strong>
-            <span>{dateName(r.date)}</span>
-          </div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Billing period</th>
-              <th>Description</th>
-              <th className="right">Amount received</th>
-            </tr>
-          </thead>
-          <tbody>
-            {r.allocations.map((a, i) => (
-              <tr key={i}>
-                <td>{monthName(a.period)}</td>
-                <td>{a.description}</td>
-                <td className="amount right">{money(a.amount)}</td>
-              </tr>
-            ))}
-            {!!r.advance && (
+          <table>
+            <thead>
               <tr>
-                <td>Advance</td>
-                <td>Credit kept for the next {r.category} dues</td>
-                <td className="amount right">{money(r.advance)}</td>
+                <th>Billing period</th>
+                <th>Description</th>
+                <th className="right">Amount received</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-        <div className="receipt-total">
-          <span>Total received</span>
-          <strong>{money(r.amount)}</strong>
+            </thead>
+            <tbody>
+              {r.allocations.map((a, i) => (
+                <tr key={i}>
+                  <td>{monthName(a.period)}</td>
+                  <td>{a.description}</td>
+                  <td className="amount right">{money(a.amount)}</td>
+                </tr>
+              ))}
+              {!!r.advance && (
+                <tr>
+                  <td>Advance</td>
+                  <td>Credit kept for the next {r.category} dues</td>
+                  <td className="amount right">{money(r.advance)}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="receipt-total">
+            <span>Total received</span>
+            <strong>{money(r.amount)}</strong>
+          </div>
+          {!!r.gateway?.refunded_before_receipt && (
+            <p className="notice">
+              Originally charged {money(r.gateway.charged)};{" "}
+              {money(r.gateway.refunded_before_receipt)} was refunded before
+              this receipt. This receipt records only the retained credit.
+            </p>
+          )}
+          {r.refunded_amount > 0 && (
+            <div className="notice">
+              Refunded after receipt: {money(r.refunded_amount)}. Net retained:{" "}
+              {money(r.amount - r.refunded_amount)}. The original receipt and
+              allocations are preserved; refunded fees are outstanding again.
+            </div>
+          )}
+          <div className="detail-grid">
+            <div>
+              <small>Payment mode</small>
+              <strong>{r.mode}</strong>
+            </div>
+            <div>
+              <small>Reference</small>
+              <strong>{r.reference || "—"}</strong>
+            </div>
+            <div>
+              <small>Received by</small>
+              <strong>{r.received_name}</strong>
+            </div>
+          </div>
+          <div className="receipt-signature">
+            <p>Thank you. Every payment makes a difference.</p>
+            <div>Authorized signature</div>
+          </div>
         </div>
-        {!!r.gateway?.refunded_before_receipt && (
-          <p className="notice">
-            Originally charged {money(r.gateway.charged)};{" "}
-            {money(r.gateway.refunded_before_receipt)} was refunded before this
-            receipt. This receipt records only the retained credit.
-          </p>
-        )}
-        {r.refunded_amount > 0 && (
-          <div className="notice">
-            Refunded after receipt: {money(r.refunded_amount)}. Net retained:{" "}
-            {money(r.amount - r.refunded_amount)}. The original receipt and
-            allocations are preserved; refunded fees are outstanding again.
-          </div>
-        )}
-        <div className="detail-grid">
-          <div>
-            <small>Payment mode</small>
-            <strong>{r.mode}</strong>
-          </div>
-          <div>
-            <small>Reference</small>
-            <strong>{r.reference || "—"}</strong>
-          </div>
-          <div>
-            <small>Received by</small>
-            <strong>{r.received_name}</strong>
-          </div>
-        </div>
-        <div className="receipt-signature">
-          <p>Thank you. Every payment makes a difference.</p>
-          <div>Authorized signature</div>
-        </div>
-      </div>
+      )}
       <div className="modal-actions receipt-actions">
         <span>
           <ShieldCheck size={14} /> Reprinting does not create a new payment.
@@ -3293,6 +3338,7 @@ function SettingsPage({
         </div>
       </section>
       <BlocksSettings data={data} onSaved={onSaved} />
+      <MealPricesSettings data={data} onSaved={onSaved} />
       <FeeStructure data={data} onSaved={onSaved} />
     </div>
   );
@@ -3300,8 +3346,18 @@ function SettingsPage({
 
 // Shared sponsorship pages open without signing in.
 const appeal = window.location.pathname.match(/^\/appeal\/([\w-]{8,40})$/);
+// The mess QR code opens the visitor token page, also without signing in.
+const token = window.location.pathname.match(
+  /^\/token(?:\/([\w-]{8,40}))?\/?$/,
+);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {appeal ? <AppealPage token={appeal[1]} /> : <App />}
+    {appeal ? (
+      <AppealPage token={appeal[1]} />
+    ) : token ? (
+      <PublicTokenPage tokenKey={token[1]} />
+    ) : (
+      <App />
+    )}
   </React.StrictMode>,
 );

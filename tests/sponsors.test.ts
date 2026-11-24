@@ -52,6 +52,7 @@ test(
       "20261121010000_parent_details",
       "20261123010000_leave_warden",
       "20261124010000_sponsors",
+      "20261125010000_meal_tokens",
     ])
       await owner.query(
         await readFile(

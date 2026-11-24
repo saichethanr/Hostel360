@@ -25,8 +25,10 @@ type Services = {
 // Each hostel uses its own merchant account. Secrets are server environment
 // values, never settings rows, browser responses, backups or application logs.
 export class Gateway {
-  // Settles a sponsor contribution order the webhook reports (see sponsors.ts).
-  sponsorOrder?: (providerOrderId: string, keyId: string) => Promise<void>;
+  // Settle other orders the webhook reports: sponsor contributions and meal
+  // tokens register here.
+  otherOrders: ((providerOrderId: string, keyId: string) => Promise<void>)[] =
+    [];
   constructor(
     private db: Store,
     private services: Services,
@@ -671,7 +673,9 @@ export class Gateway {
               c.key_id,
             );
             if (order) await this.syncOrder(order);
-            else await this.sponsorOrder?.(payment.order_id, c.key_id);
+            else
+              for (const settle of this.otherOrders)
+                await settle(payment.order_id, c.key_id);
           }
           res.json({ ok: true });
         });

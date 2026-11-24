@@ -27,6 +27,7 @@ import { onLeave, registerLeaves } from "./leaves.js";
 import { saveBackup } from "./backup.js";
 import { registerCommunities } from "./communities.js";
 import { registerSponsors } from "./sponsors.js";
+import { registerTokens } from "./tokens.js";
 import { Gateway } from "./gateway.js";
 
 export function createApp(
@@ -383,6 +384,19 @@ export function createApp(
             ).count,
           }
         : {}),
+      // Staff see how many meal tokens are open right now.
+      ...(db.communities && ["Admin", "Manager"].includes(user.role)
+        ? {
+            open_tokens: Number(
+              (
+                await db.get(
+                  "SELECT COUNT(*) AS count FROM meal_tokens WHERE status='Open' AND expires_at>?",
+                  now(),
+                )
+              ).count,
+            ),
+          }
+        : {}),
       // Admins see join requests waiting for a decision on every screen.
       ...(db.communities && user.role === "Admin"
         ? {
@@ -726,7 +740,7 @@ export function createApp(
       );
       const receipt = `${category.toUpperCase()}-${String(seq.value).padStart(6, "0")}`;
       const student = await db.get(
-        "SELECT name,code,roll FROM students WHERE id=?",
+        "SELECT name,code,roll,course,department,year FROM students WHERE id=?",
         b.student_id,
       );
       const snapshot = {
@@ -924,6 +938,7 @@ export function createApp(
   });
   gateway.routes(app);
   registerLeaves(app, db, audit);
+  if (db.communities) registerTokens(app, { db, gateway, audit });
   if (db.communities)
     registerSponsors(app, {
       db,

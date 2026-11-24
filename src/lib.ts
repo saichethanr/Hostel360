@@ -57,6 +57,10 @@ export type Receipt = Payment & {
   allocations: { period: string; description: string; amount: number }[];
   // Paid beyond the dues; kept as credit for the next dues.
   advance?: number;
+  // Class details captured when the payment was recorded.
+  year?: number;
+  department?: string;
+  course?: string;
 };
 export type Attendance = {
   student_id: number;
@@ -92,6 +96,8 @@ export type Workspace = {
   community?: Community;
   pending_members?: number;
   pending_leaves?: number;
+  // Meal tokens open right now (staff only).
+  open_tokens?: number;
   user: {
     id: number;
     name: string;
@@ -106,7 +112,12 @@ export type Workspace = {
   demands: Demand[];
   payments: Payment[];
   // Online payments beyond the dues, kept per category for the next dues.
-  credits: { id: number; student_id: number; category: string; credit: number }[];
+  credits: {
+    id: number;
+    student_id: number;
+    category: string;
+    credit: number;
+  }[];
   attendance: Attendance[];
   audit: {
     id: number;
@@ -170,9 +181,9 @@ export const monthName = (period: string, short = false) =>
   /^\d{4}-\d{4}$/.test(period)
     ? `AY ${period}`
     : new Date(`${period}-01T12:00:00`).toLocaleDateString("en-IN", {
-    month: short ? "short" : "long",
-    ...(short ? {} : { year: "numeric" }),
-  });
+        month: short ? "short" : "long",
+        ...(short ? {} : { year: "numeric" }),
+      });
 export const dateName = (date: string) =>
   new Date(`${date.slice(0, 10)}T12:00:00`).toLocaleDateString("en-IN", {
     day: "numeric",
