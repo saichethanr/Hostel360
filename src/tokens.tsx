@@ -155,6 +155,26 @@ function TokenView({
 }) {
   const [t, setT] = useState<Token | null>(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { ask, dialog } = useConfirm();
+  const closeMine = async () => {
+    if (
+      !(await ask({
+        title: "Got your food?",
+        body: "Close this token once your meal is served. It can’t be used again.",
+        confirm: "Yes, close my token",
+      }))
+    )
+      return;
+    setBusy(true);
+    try {
+      setT(await api<Token>(`/public/tokens/${tokenKey}/close`, {}));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   useEffect(() => {
     let stop = false;
     const load = () =>
@@ -181,12 +201,26 @@ function TokenView({
   if (!t) return <div className="loader" />;
   return (
     <>
-      <TokenCard t={t} />
+      {dialog}
+      <TokenCard t={t}>
+        {t.status === "Open" && (
+          <button
+            className="button token-close"
+            disabled={busy}
+            onClick={closeMine}
+          >
+            {busy ? "Closing…" : "I got my food · Close token"}
+          </button>
+        )}
+      </TokenCard>
       <section className="panel appeal-cta">
-        <p>
-          Show this screen at the mess counter. Staff close the token when your
-          meal is served. An unused token expires 2 hours after payment.
-        </p>
+        {t.status === "Open" && (
+          <p>
+            Show this screen at the mess counter. Once you receive your food,
+            close the token yourself with the button above. An unused token
+            expires 2 hours after payment.
+          </p>
+        )}
         <button className="button secondary" onClick={onBuy}>
           Buy another token
         </button>
@@ -608,8 +642,9 @@ export function TokensPage({
           <div>
             <h2>Tokens</h2>
             <p>
-              Updates every few seconds. Verify the number the visitor shows,
-              then close the token when the meal is served.
+              Updates every few seconds. Verify the number the visitor shows.
+              Visitors close their own token after eating; close it here if they
+              don’t.
             </p>
           </div>
           <select
@@ -677,9 +712,9 @@ export function TokensPage({
                     >
                       {t.status}
                     </span>
-                    {t.closed_name && (
+                    {t.status === "Closed" && (
                       <small className="cell-sub">
-                        by {t.closed_name} · {time(t.closed_at)}
+                        by {t.closed_name || "visitor"} · {time(t.closed_at)}
                       </small>
                     )}
                   </td>

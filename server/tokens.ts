@@ -5,7 +5,8 @@ import { ensure, me, admin, staff, text, integer, now } from "./http.js";
 import type { Gateway } from "./gateway.js";
 
 export const meals = ["Breakfast", "Lunch", "Dinner"] as const;
-// A token stays Open this long after payment unless staff close it first.
+// A token stays Open this long after payment unless the buyer or staff close
+// it first.
 export const tokenHours = 2;
 const phonePattern = /^\+?[0-9][0-9 -]{7,18}$/;
 
@@ -240,6 +241,28 @@ export function registerTokens(
     );
     await settle(t);
     res.json(view(await byKey(req.params.key)));
+  });
+
+  // The buyer closes their own token once the food is served; staff can too.
+  app.post("/api/public/tokens/:key/close", async (req, res) => {
+    const closed = await db.transaction(async () => {
+      const t = await byKey(req.params.key);
+      ensure(t.status !== "Pending", "This token is not paid yet.", 409);
+      ensure(t.status === "Open", "This token is already closed.", 409);
+      ensure(t.expires_at > now(), "This token has expired.", 409);
+      await db.run(
+        "UPDATE meal_tokens SET status='Closed',closed_at=? WHERE id=? AND status='Open'",
+        now(),
+        t.id,
+      );
+      await audit(
+        { name: "Visitor" },
+        "Meal token closed by visitor",
+        `T-${String(t.id).padStart(4, "0")} · ${t.meal}`,
+      );
+      return byKey(req.params.key);
+    });
+    res.json(view(closed));
   });
 
   // The buyer's token page polls this; a checkout closed before confirming

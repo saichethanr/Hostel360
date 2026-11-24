@@ -289,34 +289,60 @@ test(
     );
     assert.equal((await request("/workspace", admin)).body.open_tokens, 2);
 
-    // Served: the manager closes it, once.
+    // Served: the visitor closes their own token, once; nobody else's key works.
     assert.equal(
-      (await request(`/tokens/${token.id}/close`, manager, {})).body.status,
-      "Closed",
+      (await request("/public/tokens/not-a-real-key/close", "", {})).status,
+      404,
     );
+    const mine = await request(
+      `/public/tokens/${bought.body.key}/close`,
+      "",
+      {},
+    );
+    assert.equal(mine.body.status, "Closed");
     assert.equal(
-      (await request(`/tokens/${token.id}/close`, manager, {})).status,
+      (await request(`/public/tokens/${bought.body.key}/close`, "", {})).status,
       409,
     );
     assert.equal(
-      (await request(`/public/tokens/${bought.body.key}`)).body.status,
+      (await request("/tokens", manager)).body.tokens.find(
+        (x: Row) => x.id === token.id,
+      ).closed_name,
+      null,
+    );
+    // Staff can close a token too, once.
+    assert.equal(
+      (await request(`/tokens/${counter.body.id}/close`, manager, {})).body
+        .status,
       "Closed",
     );
+    assert.equal(
+      (await request(`/tokens/${counter.body.id}/close`, manager, {})).status,
+      409,
+    );
 
-    // Two hours later an unclosed token reads as Expired and leaves the count.
+    // Two hours later an unclosed token reads as Expired, leaves the count,
+    // and its buyer can no longer close it.
+    const late = (
+      await request("/tokens", manager, { meal: "Lunch", mode: "Cash" })
+    ).body;
     await db.inCommunity(community.id, () =>
       db.run(
         "UPDATE meal_tokens SET expires_at=? WHERE id=?",
         new Date(Date.now() - 1000).toISOString(),
-        counter.body.id,
+        late.id,
       ),
     );
     assert.equal(
       (await request("/tokens", manager)).body.tokens.find(
-        (x: Row) => x.id === counter.body.id,
+        (x: Row) => x.id === late.id,
       ).status,
       "Expired",
     );
     assert.equal((await request("/workspace", manager)).body.open_tokens, 0);
+    assert.equal(
+      (await request(`/public/tokens/${late.access_key}/close`, "", {})).status,
+      409,
+    );
   },
 );

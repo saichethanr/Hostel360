@@ -3998,6 +3998,15 @@ button.community-choice:focus-visible {
 .token-card .button.secondary {
   margin-top: 8px;
 }
+.token-card .token-close {
+  margin-top: 14px;
+  min-height: 50px;
+  padding: 0 22px;
+  font-size: 16px;
+  background: #fff;
+  color: #11683d;
+  border-color: #fff;
+}
 .token-title {
   margin: 4px 0 6px;
   font-size: 26px;
