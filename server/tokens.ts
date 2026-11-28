@@ -158,6 +158,8 @@ export function registerTokens(
       currency: "INR",
       receipt: `token-${token.id}`,
       notes: { purpose: "Meal token", meal: b.meal },
+      // Token money belongs to the mess.
+      ...gateway.messTransfer(c, amount),
     });
     ensure(
       typeof order.id === "string" && order.amount === amount,

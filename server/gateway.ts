@@ -13,6 +13,10 @@ import {
 import type { Row, Store } from "./store.js";
 
 type Credentials = {
+  // Razorpay Route linked account (acc_...) for the hostel's Mess bank
+  // account. Mess money is transferred there; other fees settle to the
+  // merchant's own (Admission) account.
+  mess_account?: string;
   key_id: string;
   key_secret: string;
   webhook_secret: string;
@@ -65,11 +69,31 @@ export class Gateway {
     ensure(
       /^rzp_(test|live)_[\w]+$/.test(c.key_id) &&
         text(c.key_secret, 500) &&
-        text(c.webhook_secret, 500),
+        text(c.webhook_secret, 500) &&
+        (c.mess_account === undefined ||
+          /^acc_[A-Za-z0-9]+$/.test(c.mess_account)),
       "Payment configuration needs administrator attention.",
       503,
     );
     return c;
+  }
+
+  // Order fields that send a Mess payment to the Mess bank account through
+  // Razorpay Route. Without a configured linked account, Mess money settles
+  // to the main account like every other fee.
+  messTransfer(c: { mess_account?: string }, amount: number) {
+    return c.mess_account
+      ? {
+          transfers: [
+            {
+              account: c.mess_account,
+              amount,
+              currency: "INR",
+              notes: { purpose: "Mess" },
+            },
+          ],
+        }
+      : {};
   }
 
   private configured(keyId?: string) {
@@ -871,6 +895,7 @@ export class Gateway {
             currency: "INR",
             receipt: o.id,
             partial_payment: false,
+            ...(o.category === "Mess" ? this.messTransfer(c, o.amount) : {}),
           });
           ensure(
             typeof provider.id === "string" &&

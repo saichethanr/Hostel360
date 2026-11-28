@@ -124,6 +124,9 @@ test(
             key_id: `rzp_test_${c.code}`,
             key_secret: `test-${c.code}`,
             webhook_secret: `webhook-${c.code}`,
+            ...(c === communities[0]
+              ? { mess_account: "acc_MessBank001" }
+              : {}),
           },
         ]),
       ),
@@ -508,6 +511,33 @@ test(
           3200,
         );
         assert.deepEqual(workspace.credits, []);
+      },
+    );
+    await t.test(
+      "Mess payments go to the Mess linked account; other fees stay with the main account",
+      async () => {
+        // Every order sent to Razorpay so far, by its fee category.
+        const sent = await db.inCommunity(a.id, () =>
+          db.all(
+            "SELECT category,provider_order_id FROM gateway_orders WHERE provider_order_id IS NOT NULL",
+          ),
+        );
+        const byCategory = (category: string) =>
+          sent
+            .filter((o: Row) => o.category === category)
+            .map((o: Row) => providerOrders.get(o.provider_order_id)!);
+        assert(byCategory("Mess").length > 0 && byCategory("Fund").length > 0);
+        for (const o of byCategory("Mess"))
+          assert.deepEqual(o.transfers, [
+            {
+              account: "acc_MessBank001",
+              amount: o.amount,
+              currency: "INR",
+              notes: { purpose: "Mess" },
+            },
+          ]);
+        for (const o of byCategory("Fund"))
+          assert.equal(o.transfers, undefined);
       },
     );
     await t.test(
@@ -950,7 +980,11 @@ test(
           "/gateway/orders",
           a,
           admin,
-          { student_id: student.student_id, category: "Mess", request_key: randomUUID() },
+          {
+            student_id: student.student_id,
+            category: "Mess",
+            request_key: randomUUID(),
+          },
           403,
         );
         // Earlier subtests leave a payment in review, which blocks checkout.
