@@ -84,6 +84,7 @@ import {
 } from "./operations";
 import { TokensPage, MealPricesSettings, PublicTokenPage } from "./tokens";
 import { AdmissionChallan, MessChallan } from "./challan";
+import { admissionHeads, payKind, payKinds } from "../server/challan";
 import "./styles.css";
 import "./dark.css";
 
@@ -974,8 +975,8 @@ function App() {
                 <h3>Collect once. Account for everything.</h3>
                 <p>
                   Select outstanding months, enter full or partial allocations,
-                  review, and confirm. One category per payment, one
-                  consolidated receipt.
+                  review, and confirm. Mess and Admission are paid separately,
+                  each on one consolidated receipt.
                 </p>
               </div>
             </div>
@@ -2107,14 +2108,7 @@ function DemandTable({
                       ? ` · ${d.days} days × ${money(d.rate)}`
                       : d.category === "Mess"
                         ? ""
-                        : ` · ${
-                            // "Management fee" says nothing new; Fund lines do.
-                            d.description
-                              .replace(/^Admission · /, "")
-                              .startsWith(d.category)
-                              ? "Admission"
-                              : d.description.replace(/^Admission · /, "")
-                          }`}
+                        : ` · ${d.description.replace(/^Admission · /, "")}`}
                   </small>
                 </td>
                 <td className="amount">
@@ -2182,6 +2176,7 @@ function DemandsPage({
   const [period, setPeriod] = useState("All months");
   const [search, setSearch] = useState("");
   const [previewing, setPreviewing] = useState(false);
+  const [raising, setRaising] = useState(false);
   const rows = data.demands.filter(
     (d) =>
       (period === "All months" || d.period === period) &&
@@ -2222,9 +2217,18 @@ function DemandsPage({
             <p>Historical rates and chargeable days stay locked.</p>
           </div>
           {data.user.role === "Admin" && (
-            <Button icon={Plus} onClick={() => setPreviewing(true)}>
-              Generate mess demand
-            </Button>
+            <div className="heading-actions">
+              <Button
+                variant="secondary"
+                icon={Plus}
+                onClick={() => setRaising(true)}
+              >
+                Raise a due
+              </Button>
+              <Button icon={Plus} onClick={() => setPreviewing(true)}>
+                Generate mess demand
+              </Button>
+            </div>
           )}
         </div>
         <div className="table-toolbar">
@@ -2271,6 +2275,16 @@ function DemandsPage({
           </span>
         </div>
       </section>
+      {raising && (
+        <RaiseDue
+          data={data}
+          onClose={() => setRaising(false)}
+          onSaved={async (m) => {
+            setRaising(false);
+            await onSaved(m);
+          }}
+        />
+      )}
       {previewing && (
         <DemandPreview
           data={data}
@@ -2284,6 +2298,144 @@ function DemandsPage({
         />
       )}
     </>
+  );
+}
+// One admission due for one student, under any Management, Fund or
+// Establishment head, for an academic year.
+function RaiseDue({
+  data,
+  onClose,
+  onSaved,
+}: {
+  data: Workspace;
+  onClose: () => void;
+  onSaved: (message: string) => Promise<void>;
+}) {
+  const [student, setStudent] = useState(0);
+  const [category, setCategory] = useState(admissionHeads[0].category);
+  const heads = admissionHeads.find((g) => g.category === category)!.heads;
+  const [head, setHead] = useState(heads[0].key);
+  const [year, setYear] = useState("");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const label = heads.find((h) => h.key === head)?.label;
+  return (
+    <Modal
+      title="Raise a due"
+      subtitle="Charge one student under a Management, Fund or Establishment head. It is paid on the Admission receipt."
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+    >
+      <form
+        className="modal-body"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError("");
+          try {
+            await api("/demands", {
+              student_id: student,
+              category,
+              head,
+              academic_year: year,
+              amount: Math.round(Number(amount) * 100),
+            });
+            const name = data.students.find((s) => s.id === student)?.name;
+            await onSaved(
+              `${name} now owes ${money(Math.round(Number(amount) * 100))} for ${category} · ${label}.`,
+            );
+          } catch (err) {
+            setError(errorMessage(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <div className="form-grid">
+          <Field label="Student">
+            <select
+              required
+              aria-label="Due student"
+              value={student || ""}
+              onChange={(e) => {
+                const id = Number(e.target.value);
+                setStudent(id);
+                setYear(
+                  data.students.find((s) => s.id === id)?.academic_year || year,
+                );
+              }}
+            >
+              <option value="" disabled>
+                Select a student
+              </option>
+              {data.students
+                .filter((s) => s.status === "Active")
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} · {s.code}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label="Academic year">
+            <input
+              required
+              pattern="20[0-9]{2}-20[0-9]{2}"
+              placeholder="2026-2027"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+            />
+          </Field>
+          <Field label="Fee">
+            <select
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                setHead(
+                  admissionHeads.find((g) => g.category === e.target.value)!
+                    .heads[0].key,
+                );
+              }}
+            >
+              {admissionHeads.map((g) => (
+                <option key={g.category}>{g.category}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Head">
+            <select value={head} onChange={(e) => setHead(e.target.value)}>
+              {heads.map((h) => (
+                <option key={h.key} value={h.key}>
+                  {h.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Amount (₹)">
+            <input
+              required
+              type="number"
+              min="1"
+              max="1000000"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </Field>
+        </div>
+        {error && <p className="notice danger">{error}</p>}
+        <div className="modal-actions">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button icon={Plus} disabled={busy || !student}>
+            {busy ? "Saving…" : "Raise due"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 function DemandPreview({
@@ -2693,9 +2845,11 @@ function PaymentForm({
   const rows = data.demands
     .filter(
       (d) =>
-        d.student_id === student && d.category === category && d.balance > 0,
+        d.student_id === student &&
+        payKind(d.category) === category &&
+        d.balance > 0,
     )
-    .sort((a, b) => a.period.localeCompare(b.period));
+    .sort((a, b) => a.period.localeCompare(b.period) || a.id - b.id);
   const allocated = rows
     .filter((d) => Number(allocations[d.id]) > 0)
     .map((d) => ({
@@ -2777,7 +2931,7 @@ function PaymentForm({
                   ))}
                 </select>
               </Field>
-              <Field label="Fee category">
+              <Field label="Fee">
                 <select
                   value={category}
                   onChange={(e) => {
@@ -2785,7 +2939,7 @@ function PaymentForm({
                     setAllocations({});
                   }}
                 >
-                  {["Mess", "Fund", "Management", "Establishment"].map((c) => (
+                  {payKinds.map((c) => (
                     <option key={c}>{c}</option>
                   ))}
                 </select>
@@ -2810,7 +2964,7 @@ function PaymentForm({
                   </button>
                 </div>
                 {rows.length === 0 ? (
-                  <Empty title="All clear in this category">
+                  <Empty title="Nothing outstanding">
                     This student has no outstanding {category.toLowerCase()}{" "}
                     demands.
                   </Empty>
@@ -2829,7 +2983,11 @@ function PaymentForm({
                           <tr key={d.id}>
                             <td>
                               {monthName(d.period)}
-                              <small>{d.description}</small>
+                              <small>
+                                {d.category === "Mess"
+                                  ? d.description
+                                  : `${d.category} · ${d.description.replace(/^Admission · /, "")}`}
+                              </small>
                             </td>
                             <td className="amount">{money(d.balance)}</td>
                             <td>
@@ -2922,14 +3080,19 @@ function PaymentForm({
               </div>
             </div>
             <div className="review-allocations">
-              {allocated.map((a) => (
-                <div key={a.demand_id}>
-                  <span>
-                    {monthName(rows.find((d) => d.id === a.demand_id)!.period)}
-                  </span>
-                  <strong>{money(a.amount)}</strong>
-                </div>
-              ))}
+              {allocated.map((a) => {
+                const d = rows.find((d) => d.id === a.demand_id)!;
+                return (
+                  <div key={a.demand_id}>
+                    <span>
+                      {monthName(d.period)}
+                      {d.category !== "Mess" &&
+                        ` · ${d.category} · ${d.description.replace(/^Admission · /, "")}`}
+                    </span>
+                    <strong>{money(a.amount)}</strong>
+                  </div>
+                );
+              })}
             </div>
             <div className="notice">
               <LockKeyhole size={16} /> This records money actually received.
@@ -2998,116 +3161,28 @@ function ReceiptModal({
       onClose={onClose}
       wide
     >
+      {demo && (
+        <div className="receipt-demo">
+          DEMO RECEIPT · FICTIONAL DATA · NOT VALID FOR ACCOUNTING
+        </div>
+      )}
       {r.category === "Mess" ? (
         <MessChallan r={r} />
-      ) : ["Management", "Fund", "Establishment"].includes(r.category) ? (
-        <AdmissionChallan r={r} />
       ) : (
-        <div className="receipt-paper">
-          <div className="receipt-brand">
-            <div className="small-icon">
-              <Building2 size={25} />
-            </div>
-            <div>
-              <h2>{r.hostel}</h2>
-              <p>
-                {HOSTEL.short} · {r.category} payment receipt
-              </p>
-            </div>
-            <Badge
-              tone={r.reversed_at || r.refunded_amount > 0 ? "amber" : "green"}
-            >
-              {r.reversed_at
-                ? "Reversed"
-                : r.refunded_amount > 0
-                  ? "Partly refunded"
-                  : "Received"}
-            </Badge>
-          </div>
-          {r.reversed_at && (
-            <div className="notice danger">
-              REVERSED · {dateName(r.reversed_at)} · {r.reversal_reason}. This
-              receipt is retained for audit and is no longer a valid collection.
-            </div>
-          )}
-          {demo && (
-            <div className="receipt-demo">
-              DEMO RECEIPT · FICTIONAL DATA · NOT VALID FOR ACCOUNTING
-            </div>
-          )}
-          <div className="receipt-meta">
-            <div>
-              <small>RECEIVED FROM</small>
-              <h3>{r.name}</h3>
-              <span>{r.code}</span>
-            </div>
-            <div>
-              <small>RECEIPT NUMBER</small>
-              <strong>{r.receipt}</strong>
-              <span>{dateName(r.date)}</span>
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Billing period</th>
-                <th>Description</th>
-                <th className="right">Amount received</th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.allocations.map((a, i) => (
-                <tr key={i}>
-                  <td>{monthName(a.period)}</td>
-                  <td>{a.description}</td>
-                  <td className="amount right">{money(a.amount)}</td>
-                </tr>
-              ))}
-              {!!r.advance && (
-                <tr>
-                  <td>Advance</td>
-                  <td>Credit kept for the next {r.category} dues</td>
-                  <td className="amount right">{money(r.advance)}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          <div className="receipt-total">
-            <span>Total received</span>
-            <strong>{money(r.amount)}</strong>
-          </div>
-          {!!r.gateway?.refunded_before_receipt && (
-            <p className="notice">
-              Originally charged {money(r.gateway.charged)};{" "}
-              {money(r.gateway.refunded_before_receipt)} was refunded before
-              this receipt. This receipt records only the retained credit.
-            </p>
-          )}
-          {r.refunded_amount > 0 && (
-            <div className="notice">
-              Refunded after receipt: {money(r.refunded_amount)}. Net retained:{" "}
-              {money(r.amount - r.refunded_amount)}. The original receipt and
-              allocations are preserved; refunded fees are outstanding again.
-            </div>
-          )}
-          <div className="detail-grid">
-            <div>
-              <small>Payment mode</small>
-              <strong>{r.mode}</strong>
-            </div>
-            <div>
-              <small>Reference</small>
-              <strong>{r.reference || "—"}</strong>
-            </div>
-            <div>
-              <small>Received by</small>
-              <strong>{r.received_name}</strong>
-            </div>
-          </div>
-          <div className="receipt-signature">
-            <p>Thank you. Every payment makes a difference.</p>
-            <div>Authorized signature</div>
-          </div>
+        <AdmissionChallan r={r} />
+      )}
+      {!!r.gateway?.refunded_before_receipt && (
+        <p className="notice">
+          Originally charged {money(r.gateway.charged)};{" "}
+          {money(r.gateway.refunded_before_receipt)} was refunded before this
+          receipt. This receipt records only the retained credit.
+        </p>
+      )}
+      {r.refunded_amount > 0 && (
+        <div className="notice">
+          Refunded after receipt: {money(r.refunded_amount)}. Net retained:{" "}
+          {money(r.amount - r.refunded_amount)}. The original receipt and
+          allocations are preserved; refunded fees are outstanding again.
         </div>
       )}
       <div className="modal-actions receipt-actions">
@@ -3387,7 +3462,7 @@ function SettingsPage({
           ["Mess billing", "Present days × daily rate"],
           ["Leave & absent days", "Not chargeable"],
           ["Payment allocation", "Staff-selected demand amounts"],
-          ["Receipts", "One category per payment; separate sequences"],
+          ["Receipts", "Mess and Admission each have their own receipts"],
           ["Finalization", "Admin only, after month-end"],
           ["Currency & timezone", "Indian rupee (INR) · Asia/Kolkata"],
         ].map(([key, value]) => (

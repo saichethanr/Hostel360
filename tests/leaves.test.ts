@@ -33,6 +33,7 @@ test(
       "20261124010000_sponsors",
       "20261125010000_meal_tokens",
       "20261128010000_holidays_concession",
+      "20261129010000_admission_heads",
     ])
       await owner.query(
         await readFile(

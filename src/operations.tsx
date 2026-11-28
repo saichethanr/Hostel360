@@ -5,6 +5,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { admissionHeads, feeKey } from "../server/challan";
 import { Moon, Sun } from "lucide-react";
 import {
   blockLetter,
@@ -1463,25 +1464,19 @@ export function BlocksSettings({
     </section>
   );
 }
-// Admission fees by student type. Fresher Fund includes the refundable mess
-// caution deposit, shown as its own line so the difference is clear.
-const feeLines = (type: "fresher" | "existing") => [
-  { key: `fee_${type}_management`, label: "Management" },
-  {
-    key: `fee_${type}_fund`,
-    label: type === "fresher" ? "Hostel fund" : "Fund",
-  },
-  ...(type === "fresher"
-    ? [{ key: "fee_fresher_caution", label: "Mess caution deposit" }]
-    : []),
-  { key: `fee_${type}_establishment`, label: "Establishment" },
-];
+// Admission fees by student type, one amount per printed challan head. The
+// fresher's Fund includes the refundable mess caution deposit.
+type FeeType = "fresher" | "existing";
+const feeKeys = (type: FeeType) =>
+  admissionHeads.flatMap(({ category, heads }) =>
+    heads.map((h) => feeKey(type, category, h.key)),
+  );
 export const admissionTotal = (
   settings: Record<string, string>,
   type: string,
 ) =>
-  feeLines(type === "Fresher" ? "fresher" : "existing").reduce(
-    (sum, l) => sum + Number(settings[l.key] || 0),
+  feeKeys(type === "Fresher" ? "fresher" : "existing").reduce(
+    (sum, k) => sum + Number(settings[k] || 0),
     0,
   );
 export function FeeStructure({
@@ -1491,9 +1486,7 @@ export function FeeStructure({
   data: Workspace;
   onSaved: (m: string) => Promise<void>;
 }) {
-  const keys = [...feeLines("fresher"), ...feeLines("existing")].map(
-    (l) => l.key,
-  );
+  const keys = [...feeKeys("fresher"), ...feeKeys("existing")];
   const [fees, setFees] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       keys.map((k) => [k, String(Number(data.settings[k] || 0) / 100)]),
@@ -1503,35 +1496,65 @@ export function FeeStructure({
     [busy, setBusy] = useState(false);
   const edits = useChanged(JSON.stringify(fees));
   const paise = (k: string) => Math.round(Number(fees[k] || 0) * 100);
-  const total = (type: "fresher" | "existing") =>
-    feeLines(type).reduce((sum, l) => sum + paise(l.key), 0);
-  const input = (key: string, label: string) => (
-    <label className="fee-line" key={key}>
-      <span>{label}</span>
-      <span className="fee-input">
-        ₹
-        <input
-          type="number"
-          min="0"
-          step="1"
-          max="1000000"
-          required
-          aria-label={label}
-          value={fees[key]}
-          onChange={(e) => setFees({ ...fees, [key]: e.target.value })}
-        />
-      </span>
-    </label>
+  const total = (type: FeeType) =>
+    feeKeys(type).reduce((sum, k) => sum + paise(k), 0);
+  const subtotal = (type: FeeType, category: string) =>
+    admissionHeads
+      .find((g) => g.category === category)!
+      .heads.reduce((sum, h) => sum + paise(feeKey(type, category, h.key)), 0);
+  const card = (type: FeeType, title: string, hint: string) => (
+    <div className="fee-card">
+      <h3>{title}</h3>
+      <small>{hint}</small>
+      {admissionHeads.map(({ category, heads }) => (
+        <div className="fee-group" key={category}>
+          <strong className="fee-line">
+            <span>{category}</span>
+            <span>{money(subtotal(type, category))}</span>
+          </strong>
+          {heads.map((h) => {
+            const key = feeKey(type, category, h.key);
+            return (
+              <label className="fee-line" key={key}>
+                <span>{h.label}</span>
+                <span className="fee-input">
+                  ₹
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    max="1000000"
+                    required
+                    aria-label={`${title} ${category} ${h.label}`}
+                    value={fees[key]}
+                    onChange={(e) =>
+                      setFees({ ...fees, [key]: e.target.value })
+                    }
+                  />
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ))}
+      <div className="fee-line fee-total">
+        <span>Total</span>
+        <strong>{money(total(type))}</strong>
+      </div>
+    </div>
   );
+  const caution = paise("fee_fresher_fund_caution");
+  const fundGap = subtotal("fresher", "Fund") - subtotal("existing", "Fund");
   return (
     <section className="panel fee-structure">
       <div className="panel-heading">
         <div>
           <h2>Admission fee structure</h2>
           <p>
-            Charged once per academic year. Freshers are charged when the Admin
-            approves their registration; existing students when they are
-            promoted to the next year. Dues already issued never change.
+            Charged once per academic year, split into the heads printed on the
+            hostel challans. Freshers are charged when the Admin approves their
+            registration; existing students when they are promoted to the next
+            year. Dues already issued never change.
           </p>
         </div>
       </div>
@@ -1555,56 +1578,18 @@ export function FeeStructure({
         }}
       >
         <div className="fee-columns">
-          <div className="fee-card">
-            <h3>Fresher</h3>
-            <small>New students, on approval</small>
-            {input("fee_fresher_management", "Management")}
-            <div className="fee-group">
-              <strong className="fee-line">
-                <span>Fund</span>
-                <span>
-                  {money(
-                    paise("fee_fresher_fund") + paise("fee_fresher_caution"),
-                  )}
-                </span>
-              </strong>
-              {input("fee_fresher_fund", "Hostel fund")}
-              {input("fee_fresher_caution", "Mess caution deposit")}
-            </div>
-            {input("fee_fresher_establishment", "Establishment")}
-            <div className="fee-line fee-total">
-              <span>Total</span>
-              <strong>{money(total("fresher"))}</strong>
-            </div>
-          </div>
-          <div className="fee-card">
-            <h3>Existing student</h3>
-            <small>Every promotion to the next year</small>
-            {input("fee_existing_management", "Management")}
-            {input("fee_existing_fund", "Fund")}
-            {input("fee_existing_establishment", "Establishment")}
-            <div className="fee-line fee-total">
-              <span>Total</span>
-              <strong>{money(total("existing"))}</strong>
-            </div>
-          </div>
+          {card("fresher", "Fresher", "New students, on approval")}
+          {card(
+            "existing",
+            "Existing student",
+            "Every promotion to the next year",
+          )}
         </div>
         <p className="notice">
-          Fresher Fund = Hostel fund {money(paise("fee_fresher_fund"))} + Mess
-          caution deposit {money(paise("fee_fresher_caution"))}. The caution
-          deposit is why a fresher’s Fund is{" "}
-          {money(
-            Math.abs(
-              paise("fee_fresher_fund") +
-                paise("fee_fresher_caution") -
-                paise("fee_existing_fund"),
-            ),
-          )}{" "}
-          {paise("fee_fresher_fund") + paise("fee_fresher_caution") >=
-          paise("fee_existing_fund")
-            ? "more"
-            : "less"}{" "}
-          than an existing student’s. Mess is billed monthly, separately.
+          A fresher’s Fund includes the refundable mess Caution Deposit of{" "}
+          {money(caution)}, so it is {money(Math.abs(fundGap))}{" "}
+          {fundGap >= 0 ? "more" : "less"} than an existing student’s. Mess is
+          billed monthly, separately.
         </p>
         {error && <p className="notice danger">{error}</p>}
         <button className="button" disabled={busy || !edits.changed}>

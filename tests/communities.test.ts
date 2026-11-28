@@ -5,6 +5,7 @@ import { once } from "node:events";
 import pg from "pg";
 import ExcelJS from "exceljs";
 import { Store } from "../server/store.ts";
+import { feeDefaults } from "../server/operations.ts";
 import { createApp } from "../server/app.ts";
 import { hashPassword } from "../server/db.ts";
 
@@ -74,6 +75,7 @@ test(
       "20261124010000_sponsors",
       "20261125010000_meal_tokens",
       "20261128010000_holidays_concession",
+      "20261129010000_admission_heads",
     ])
       await owner.query(
         await readFile(
@@ -476,13 +478,10 @@ test(
           assert.equal(
             (
               await request("/fee-structure", c.code, c.cookie, {
-                fee_fresher_management: 0,
-                fee_fresher_fund: 0,
-                fee_fresher_caution: 0,
-                fee_fresher_establishment: 0,
-                fee_existing_management: 0,
-                fee_existing_fund: amount,
-                fee_existing_establishment: 0,
+                ...Object.fromEntries(
+                  Object.keys(feeDefaults).map((k) => [k, 0]),
+                ),
+                fee_existing_fund_others: amount,
               })
             ).status,
             200,
@@ -514,7 +513,7 @@ test(
           };
           const p = await request("/payments", c.code, c.cookie, payment);
           assert.equal(p.status, 201, JSON.stringify(p.body));
-          assert.equal(p.body.receipt, "FUND-000001");
+          assert.equal(p.body.receipt, "ADMISSION-000001");
           assert.equal(
             (await request("/payments", c.code, c.cookie, payment)).status,
             200,

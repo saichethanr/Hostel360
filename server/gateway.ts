@@ -1,15 +1,7 @@
+import { payKind, payKinds } from "./challan.js";
 import express, { type Express, type Response } from "express";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import {
-  ApiError,
-  admin,
-  categories,
-  ensure,
-  integer,
-  me,
-  now,
-  text,
-} from "./http.js";
+import { ApiError, admin, ensure, integer, me, now, text } from "./http.js";
 import type { Row, Store } from "./store.js";
 
 type Credentials = {
@@ -323,7 +315,7 @@ export class Gateway {
         (status !== "review" || reconciliation)
       ) {
         const ds = (await this.services.demands(o.student_id))
-          .filter((d) => d.category === o.category)
+          .filter((d) => payKind(d.category) === payKind(o.category))
           .sort((a, b) => a.period.localeCompare(b.period) || a.id - b.id);
         const requested: Row[] = reconciliation
           ? ds.map((d) => ({ demand_id: d.id, amount: Math.max(0, d.balance) }))
@@ -771,7 +763,7 @@ export class Gateway {
       );
       ensure(
         integer(studentId) &&
-          categories.includes(b.category) &&
+          payKinds.includes(b.category) &&
           typeof b.request_key === "string" &&
           /^[\w-]{16,100}$/.test(b.request_key),
         "Select a student, category and payment request key.",
@@ -784,7 +776,7 @@ export class Gateway {
       if (earlier) await this.syncOrder(earlier);
       const prepared = await this.db.transaction(async () => {
         const ds = (await this.services.demands(studentId)).filter(
-          (d) => d.category === b.category && d.balance > 0,
+          (d) => payKind(d.category) === b.category && d.balance > 0,
         );
         // Students may pay less (the rest stays due) or more (the excess is
         // kept as credit for their next dues). Oldest dues are settled first.

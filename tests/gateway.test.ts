@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { createHmac, randomUUID } from "node:crypto";
 import pg from "pg";
 import { Store, type Row } from "../server/store.ts";
+import { feeDefaults } from "../server/operations.ts";
 import { createApp } from "../server/app.ts";
 import { hashPassword } from "../server/db.ts";
 
@@ -32,6 +33,7 @@ test(
       "20261124010000_sponsors",
       "20261125010000_meal_tokens",
       "20261128010000_holidays_concession",
+      "20261129010000_admission_heads",
     ])
       await owner.query(
         await readFile(
@@ -461,7 +463,7 @@ test(
     await t.test(
       "late capture after an offline payment settles the rest and keeps the excess as credit",
       async () => {
-        const order = await create(student, "Fund");
+        const order = await create(student, "Admission");
         const demand = (
           await request("/workspace", a, student)
         ).data.demands.find((d: Row) => d.category === "Fund");
@@ -496,7 +498,7 @@ test(
         );
         assert.deepEqual(
           workspace.credits.map((c: Row) => [c.category, c.credit]),
-          [["Fund", 1000]],
+          [["Admission", 1000]],
         );
         refund(p, p.amount);
         assert.equal(await webhook(p, "refund.processed"), 200);
@@ -527,7 +529,9 @@ test(
           sent
             .filter((o: Row) => o.category === category)
             .map((o: Row) => providerOrders.get(o.provider_order_id)!);
-        assert(byCategory("Mess").length > 0 && byCategory("Fund").length > 0);
+        assert(
+          byCategory("Mess").length > 0 && byCategory("Admission").length > 0,
+        );
         for (const o of byCategory("Mess"))
           assert.deepEqual(o.transfers, [
             {
@@ -537,7 +541,7 @@ test(
               notes: { purpose: "Mess" },
             },
           ]);
-        for (const o of byCategory("Fund"))
+        for (const o of byCategory("Admission"))
           assert.equal(o.transfers, undefined);
       },
     );
@@ -549,7 +553,7 @@ test(
           "/gateway/orders",
           a,
           student,
-          { category: "Fund", request_key: randomUUID() },
+          { category: "Admission", request_key: randomUUID() },
           503,
         );
         failProvider = false;
@@ -668,7 +672,7 @@ test(
           "/gateway/orders",
           a,
           student,
-          { category: "Fund", request_key: randomUUID() },
+          { category: "Admission", request_key: randomUUID() },
           503,
         );
         loseOrderResponse = false;
@@ -695,7 +699,7 @@ test(
         assert.equal(recovered.amount, 3200);
         const retry = (
           await request("/gateway/orders", a, student, {
-            category: "Fund",
+            category: "Admission",
             request_key: randomUUID(),
           })
         ).data;
@@ -719,7 +723,7 @@ test(
           },
           201,
         );
-        const replacement = await create(student, "Fund");
+        const replacement = await create(student, "Admission");
         assert.equal(replacement.amount, 3000);
         assert.notEqual(replacement.id, recovered.id);
         assert.equal(
@@ -741,7 +745,7 @@ test(
           return {
             balance: w.demands.find((d: Row) => d.id === demand.id).balance,
             credit: w.credits
-              .filter((c: Row) => c.category === "Fund")
+              .filter((c: Row) => c.category === "Admission")
               .reduce((sum: number, c: Row) => sum + c.credit, 0),
           };
         };
@@ -996,39 +1000,40 @@ test(
         );
         // One Management due of ₹30 from the fee structure via promotion.
         await request("/fee-structure", a, admin, {
-          fee_fresher_management: 0,
-          fee_fresher_fund: 0,
-          fee_fresher_caution: 0,
-          fee_fresher_establishment: 0,
-          fee_existing_management: 3000,
-          fee_existing_fund: 0,
-          fee_existing_establishment: 0,
+          ...Object.fromEntries(Object.keys(feeDefaults).map((k) => [k, 0])),
+          fee_existing_management_development: 3000,
         });
         const promote = (academic_year: string) =>
           request("/students/promote", a, admin, {
             academic_year,
             student_ids: [student.student_id],
           });
-        await promote("2026-2027");
-        const management = async () => {
+        // Admission dues (any of Management, Fund, Establishment) are paid
+        // together, oldest first; earlier subtests leave some Fund due.
+        const admission = async () => {
           const w = (await request("/workspace", a, student)).data;
           return {
             balance: w.demands
-              .filter((d: Row) => d.category === "Management")
+              .filter((d: Row) => d.category !== "Mess")
               .reduce((sum: number, d: Row) => sum + d.balance, 0),
             credit: w.credits
-              .filter((c: Row) => c.category === "Management")
+              .filter((c: Row) => c.category === "Admission")
               .reduce((sum: number, c: Row) => sum + c.credit, 0),
           };
         };
-        assert.deepEqual(await management(), { balance: 3000, credit: 0 });
+        const { balance: older } = await admission();
+        await promote("2026-2027");
+        assert.deepEqual(await admission(), {
+          balance: older + 3000,
+          credit: 0,
+        });
         const pay = async (amount: number) => {
           const o = (
             await request(
               "/gateway/orders",
               a,
               student,
-              { category: "Management", request_key: randomUUID(), amount },
+              { category: "Admission", request_key: randomUUID(), amount },
               201,
             )
           ).data;
@@ -1044,21 +1049,25 @@ test(
           "/gateway/orders",
           a,
           student,
-          { category: "Management", request_key: randomUUID(), amount: 50 },
+          { category: "Admission", request_key: randomUUID(), amount: 50 },
           400,
         );
         await pay(1000);
-        assert.deepEqual(await management(), { balance: 2000, credit: 0 });
-        const over = await pay(2500);
-        assert.deepEqual(await management(), { balance: 0, credit: 500 });
+        assert.deepEqual(await admission(), {
+          balance: older + 2000,
+          credit: 0,
+        });
+        const over = await pay(older + 2500);
+        assert.deepEqual(await admission(), { balance: 0, credit: 500 });
         const receipt = (
           await request(`/receipts/${over.payment_id}`, a, student)
         ).data;
-        assert.equal(receipt.amount, 2500);
+        assert.equal(receipt.category, "Admission");
+        assert.equal(receipt.amount, older + 2500);
         assert.equal(receipt.advance, 500);
         // The next year's due is raised and the credit settles part of it.
         await promote("2027-2028");
-        assert.deepEqual(await management(), { balance: 2500, credit: 0 });
+        assert.deepEqual(await admission(), { balance: 2500, credit: 0 });
       },
     );
   },

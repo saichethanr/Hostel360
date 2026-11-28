@@ -5,6 +5,7 @@ import { hashPassword, studentCode } from "./db.js";
 import { archive, saveBackup } from "./backup.js";
 import { type Store, type Row } from "./store.js";
 import { blockLetter, parseBlocks, roomList } from "./rooms.js";
+import { admissionHeads, feeKey } from "./challan.js";
 import {
   ensure,
   today,
@@ -98,30 +99,36 @@ export async function submitApplication(
   await audit(actor, "Application submitted", `#${r.id} · ${b.name}`);
   return r;
 }
-// Admission fees in paise, editable by the Admin in Settings. Freshers also
-// pay a refundable mess caution deposit, booked under Fund.
-export const feeDefaults: Record<string, string> = {
-  fee_fresher_management: "500000",
-  fee_fresher_fund: "250000",
-  fee_fresher_caution: "400000",
-  fee_fresher_establishment: "840000",
-  fee_existing_management: "500000",
-  fee_existing_fund: "250000",
-  fee_existing_establishment: "840000",
+// Admission fees in paise per challan head, editable by the Admin in
+// Settings. Freshers also pay a refundable mess caution deposit under Fund.
+const types = ["fresher", "existing"] as const;
+const startingFees: Record<string, number> = {
+  management_development: 500000,
+  fund_others: 250000,
+  establishment_establishment: 840000,
 };
+export const feeDefaults: Record<string, string> = Object.fromEntries(
+  types.flatMap((type) =>
+    admissionHeads.flatMap(({ category, heads }) =>
+      heads.map(({ key }) => {
+        const k = feeKey(type, category, key);
+        const amount =
+          type === "fresher" && k === "fee_fresher_fund_caution"
+            ? 400000
+            : (startingFees[`${category.toLowerCase()}_${key}`] ?? 0);
+        return [k, String(amount)];
+      }),
+    ),
+  ),
+);
 const feeLines = (type: string) =>
-  [
-    ["Management", "Management fee", "management"],
-    ["Fund", "Hostel fund", "fund"],
-    ...(type === "Fresher"
-      ? [["Fund", "Mess caution deposit", "caution"]]
-      : []),
-    ["Establishment", "Establishment fee", "establishment"],
-  ].map(([category, label, key]) => ({
-    category,
-    label,
-    key: `fee_${type.toLowerCase()}_${key}`,
-  }));
+  admissionHeads.flatMap(({ category, heads }) =>
+    heads.map(({ key, label }) => ({
+      category,
+      label,
+      key: feeKey(type === "Fresher" ? "fresher" : "existing", category, key),
+    })),
+  );
 // Saves a PDF, PNG or JPEG (2 MB max) privately for a student and records
 // it; `after` runs in the same transaction. Returns the document id.
 export async function storeDocument(
@@ -610,7 +617,10 @@ export function registerOperations(
       await audit(
         me(res),
         "Fee structure updated",
-        keys.map((k) => `${k.slice(4)}: ${req.body[k] / 100} INR`).join(" · "),
+        keys
+          .filter((k) => req.body[k] > 0)
+          .map((k) => `${k.slice(4)}: ${req.body[k] / 100} INR`)
+          .join(" · "),
       );
     });
     res.json({ ok: true });

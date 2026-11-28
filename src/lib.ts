@@ -54,7 +54,12 @@ export type Payment = {
 export type Receipt = Payment & {
   hostel: string;
   gateway?: { charged: number; refunded_before_receipt: number };
-  allocations: { period: string; description: string; amount: number }[];
+  allocations: {
+    category: string;
+    period: string;
+    description: string;
+    amount: number;
+  }[];
   // Paid beyond the dues; kept as credit for the next dues.
   advance?: number;
   // Class details captured when the payment was recorded.

@@ -1,6 +1,6 @@
-// The hostel mess challan: the printed "Duplicate for Hostel" receipt the
-// office uses for mess payments. Shared by the receipt screen and the email
-// sent to students.
+// The hostel's printed "Duplicate for Hostel" challans: Mess, and one
+// Establishment-account challan for all admission fees. Shared by the receipt
+// screen and the email sent to students.
 // The institute's name in Kannada, as printed on every challan.
 export const instituteKannada =
   "ಜೆಎಸ್‌ಎಸ್ ವಿಶೇಷಚೇತನರ ಪಾಲಿಟೆಕ್ನಿಕ್ ವಿದ್ಯಾರ್ಥಿನಿಲಯ, ಮೈಸೂರು";
@@ -20,6 +20,54 @@ export const establishmentAccount = {
   title: "HOSTEL ESTABLISHMENT ACCOUNT",
   account: "789102010000464",
 };
+// Payments and receipts come in two kinds: Mess, and Admission, which settles
+// Management, Fund and Establishment dues together on one receipt.
+export const payKinds = ["Mess", "Admission"];
+export const payKind = (category: string) =>
+  category === "Mess" ? "Mess" : "Admission";
+// The admission fee heads printed on the hostel's Management, Fund and
+// Establishment challans. The Admin sets an amount for each head in Settings,
+// separately for freshers and existing students; each head becomes its own
+// due, described as "Admission · <label>".
+export const admissionHeads = [
+  {
+    category: "Management",
+    heads: [
+      ["development", "Development Fee"],
+      ["room_rent", "Room Rent"],
+      ["guest", "Guest Charges"],
+      ["others", "Others"],
+    ],
+  },
+  {
+    category: "Fund",
+    heads: [
+      ["application", "Application Fee"],
+      ["depreciation", "Depreciation"],
+      ["electrical_water", "Electrical & Water Charges"],
+      ["reading_sports", "Reading Room & Sports"],
+      ["room_rent", "Room Rent"],
+      ["caution", "Caution Deposit"],
+      ["others", "Others"],
+    ],
+  },
+  {
+    category: "Establishment",
+    heads: [
+      ["establishment", "Establishment Charges"],
+      ["others", "Others"],
+    ],
+  },
+].map(({ category, heads }) => ({
+  category,
+  heads: heads.map(([key, label]) => ({ key, label })),
+}));
+// Settings key for one head, e.g. fee_fresher_fund_caution.
+export const feeKey = (
+  type: "fresher" | "existing",
+  category: string,
+  head: string,
+) => `fee_${type}_${category.toLowerCase()}_${head}`;
 
 const ones = [
   "",

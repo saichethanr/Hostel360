@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { payKind, payKinds } from "../server/challan";
 import { CreditCard, ShieldCheck } from "lucide-react";
 import { api, money, type Workspace } from "./lib";
 
@@ -118,12 +119,14 @@ export function OnlinePayments({
   const outstanding = data.demands
     .filter(
       (d) =>
-        d.student_id === student && d.category === category && d.balance > 0,
+        d.student_id === student &&
+        payKind(d.category) === category &&
+        d.balance > 0,
     )
     .reduce((sum, d) => sum + d.balance, 0);
   const isStudent = data.user.role === "Student";
   const credit = (data.credits || [])
-    .filter((c) => c.student_id === student && c.category === category)
+    .filter((c) => c.student_id === student && payKind(c.category) === category)
     .reduce((sum, c) => sum + c.credit, 0);
   // Students may pay less (the rest stays due) or more (kept as credit).
   const [amount, setAmount] = useState("");
@@ -138,7 +141,7 @@ export function OnlinePayments({
     ["open", "creating", "authorized", "review"].includes(o.status),
   );
   const authorized = orders.some(
-    (o) => o.category === category && o.status === "authorized",
+    (o) => payKind(o.category) === category && o.status === "authorized",
   );
   useEffect(() => {
     if (!pending || busy || reconciling || orders.length > 50) return;
@@ -393,7 +396,7 @@ export function OnlinePayments({
             {isStudent && (
               <>
                 <label className="field">
-                  <span>Fee category</span>
+                  <span>Fee</span>
                   <select
                     aria-label="Online payment category"
                     disabled={busy}
@@ -403,15 +406,13 @@ export function OnlinePayments({
                       setMessage("");
                     }}
                   >
-                    {["Mess", "Fund", "Management", "Establishment"].map(
-                      (c) => (
-                        <option key={c}>{c}</option>
-                      ),
-                    )}
+                    {payKinds.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
                   </select>
                 </label>
                 <div>
-                  <small>Outstanding in this category</small>
+                  <small>Outstanding {category} fees</small>
                   <strong className="online-total">{money(outstanding)}</strong>
                   {credit > 0 && (
                     <small className="online-credit">
@@ -471,7 +472,8 @@ export function OnlinePayments({
           {isStudent && (
             <p className="online-hint">
               <ShieldCheck size={15} /> Card details and UPI approval are
-              handled by Razorpay. Pay one category at a time.
+              handled by Razorpay. Admission fees are paid together, oldest
+              first, on one receipt.
             </p>
           )}
           {review && (

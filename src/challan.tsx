@@ -1,5 +1,6 @@
 import type { Receipt } from "./lib";
 import {
+  admissionHeads,
   establishmentAccount,
   instituteKannada,
   messAccount,
@@ -7,7 +8,8 @@ import {
   rupeesInWords,
 } from "../server/challan";
 
-type Line = { label: string; amount?: number; note?: string };
+// A challan line. Sub-heads (level 1) sit indented under their fee.
+type Line = { label: string; amount?: number; note?: string; level?: 1 };
 const split = (paise: number) => {
   const [rupees, ps = "-"] = (paise / 100)
     .toLocaleString("en-IN", { maximumFractionDigits: 2 })
@@ -80,9 +82,9 @@ function Challan({
           {lines.map((l, i) => {
             const [rs, ps] = l.amount ? split(l.amount) : ["", ""];
             return (
-              <tr key={l.label}>
+              <tr key={i} className={l.level ? "challan-sub" : undefined}>
                 <td>
-                  {i + 1}. {l.label}
+                  {l.label}
                   {l.note && <em>{l.note}</em>}
                 </td>
                 <td className="right">{rs}</td>
@@ -123,10 +125,10 @@ export function MessChallan({ r }: { r: Receipt }) {
       account={messAccount}
       tone="mess"
       lines={[
-        { label: "Token Charges" },
-        { label: "Others" },
+        { label: "1. Token Charges" },
+        { label: "2. Others" },
         {
-          label: "Mess Charges",
+          label: "3. Mess Charges",
           amount: r.amount,
           note: periodRange(r.allocations.map((a) => a.period)),
         },
@@ -135,37 +137,53 @@ export function MessChallan({ r }: { r: Receipt }) {
   );
 }
 
-// Admission receipts (Management, Fund or Establishment) share one challan on
-// the Establishment account, with a line for each admission fee. The line for
-// this payment's fee is filled in; credit kept for later dues goes in Others.
+// Admission receipts: one challan on the Establishment account. Each fee
+// (Management, Fund, Establishment) shows its total, with every printed head
+// indented under it; heads this payment did not cover stay blank. Credit kept
+// for later dues goes in Others.
 export function AdmissionChallan({ r }: { r: Receipt }) {
-  const sum = (match: (a: Receipt["allocations"][number]) => boolean) =>
-    r.allocations.filter(match).reduce((total, a) => total + a.amount, 0);
-  const years = (match: (a: Receipt["allocations"][number]) => boolean) =>
-    [...new Set(r.allocations.filter(match).map((a) => a.period))].join(", ");
-  const caution = (a: Receipt["allocations"][number]) =>
-    /caution/i.test(a.description);
-  const line = (
-    label: string,
-    match: (a: Receipt["allocations"][number]) => boolean,
-  ): Line => ({ label, amount: sum(match), note: years(match) });
-  const is = (category: string) => () => r.category === category;
+  const label = (description: string) =>
+    description.replace(/^Admission · /, "");
+  const lines: Line[] = [];
+  admissionHeads.forEach(({ category, heads }, i) => {
+    const paid = r.allocations.filter((a) => a.category === category);
+    const amount = (name: string) =>
+      paid
+        .filter((a) => label(a.description) === name)
+        .reduce((sum, a) => sum + a.amount, 0);
+    // Dues raised before the heads existed keep their own description.
+    const names = [
+      ...heads.map((h) => h.label),
+      ...new Set(
+        paid
+          .map((a) => label(a.description))
+          .filter((name) => !heads.some((h) => h.label === name)),
+      ),
+    ];
+    lines.push(
+      {
+        label: `${i + 1}. ${category}`,
+        amount: paid.reduce((sum, a) => sum + a.amount, 0),
+        note: [...new Set(paid.map((a) => a.period))].join(", "),
+      },
+      ...names.map((name) => ({
+        label: name,
+        amount: amount(name),
+        level: 1 as const,
+      })),
+    );
+  });
+  lines.push({
+    label: `${admissionHeads.length + 1}. Others`,
+    amount: r.advance,
+    note: r.advance ? "Credit kept for later dues" : undefined,
+  });
   return (
     <Challan
       r={r}
       account={establishmentAccount}
       tone="establishment"
-      lines={[
-        line("Establishment Charges", is("Establishment")),
-        line("Hostel Fund", (a) => r.category === "Fund" && !caution(a)),
-        line("Caution Deposit", (a) => r.category === "Fund" && caution(a)),
-        line("Management Fee", is("Management")),
-        {
-          label: "Others",
-          amount: r.advance,
-          note: r.advance ? "Credit kept for later dues" : undefined,
-        },
-      ]}
+      lines={lines}
     />
   );
 }

@@ -3841,6 +3841,18 @@ button.community-choice:focus-visible {
   background: #fbefb0;
   border-color: #e3cf73;
 }
+.challan .challan-sub td {
+  font-size: 12px;
+  font-weight: 400;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.challan .challan-sub td:first-child {
+  padding-left: 28px;
+}
+.challan-establishment tbody tr:not(.challan-sub):not(.challan-total) td {
+  font-weight: 700;
+}
 .challan-kannada {
   font-size: 13px;
   font-weight: 600;

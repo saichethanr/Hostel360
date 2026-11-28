@@ -11,10 +11,16 @@ import {
   now,
   validDate,
   supabase,
-  categories,
 } from "./http.js";
 import { storeDocument } from "./operations.js";
-import { challanHtml, escape, periodRange, rupeesInWords } from "./challan.js";
+import {
+  challanHtml,
+  escape,
+  payKind,
+  payKinds,
+  periodRange,
+  rupeesInWords,
+} from "./challan.js";
 import { sendMail } from "./mailer.js";
 import type { Gateway } from "./gateway.js";
 
@@ -94,7 +100,7 @@ export function registerSponsors(app: Express, deps: Deps) {
     return { ...w, balance: Number(w.contributed) - Number(w.given) };
   };
   // Settles one student's oldest dues from a sponsor's wallet, one receipt per
-  // fee category. Runs inside the caller's transaction.
+  // payment kind (Mess, Admission). Runs inside the caller's transaction.
   const giveGrant = async (
     sponsor: Row,
     studentId: number,
@@ -126,13 +132,13 @@ export function registerSponsors(app: Express, deps: Deps) {
       const part = Math.min(left, d.balance);
       if (part <= 0) break;
       left -= part;
-      byCategory.set(d.category, [
-        ...(byCategory.get(d.category) ?? []),
+      byCategory.set(payKind(d.category), [
+        ...(byCategory.get(payKind(d.category)) ?? []),
         { demand_id: d.id, amount: part },
       ]);
     }
     const receipts: { id: number; receipt: string }[] = [];
-    for (const category of categories.filter((c) => byCategory.has(c))) {
+    for (const category of payKinds.filter((c) => byCategory.has(c))) {
       const allocations = byCategory.get(category)!;
       const paid = await record(
         {
@@ -356,7 +362,7 @@ ${challanHtml(challan)}`,
   });
 
   // Give wallet money to students: each grant settles that student's oldest
-  // dues first, with one receipt per fee category (mode Sponsor).
+  // dues first, with one receipt per payment kind (mode Sponsor).
   app.post("/api/sponsorship/sponsors/:id/grants", async (req, res) => {
     admin(res);
     const id = Number(req.params.id),

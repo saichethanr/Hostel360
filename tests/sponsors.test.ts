@@ -54,6 +54,7 @@ test(
       "20261124010000_sponsors",
       "20261125010000_meal_tokens",
       "20261128010000_holidays_concession",
+      "20261129010000_admission_heads",
     ])
       await owner.query(
         await readFile(
@@ -298,8 +299,8 @@ test(
       },
     );
     assert.equal(given.status, 201, JSON.stringify(given.body));
-    // One receipt per fee category: Chitra's fund, Bina's three categories.
-    assert.equal(given.body.receipts.length, 4);
+    // One Admission receipt each: Chitra's fund, Bina's three admission fees.
+    assert.equal(given.body.receipts.length, 2);
     assert.equal(await owed(chitra), 0);
     assert.equal(await owed(bina), 0);
     assert.equal(await balance(lions), 260_000);
@@ -312,22 +313,22 @@ test(
     );
     assert.equal(overdrawn.status, 409);
     // A reversed sponsor receipt returns its money to the wallet.
-    const binaManagement = (
+    const binaAdmission = (
       await request("/workspace", admin)
     ).body.payments.find(
-      (p: Row) => p.student_id === bina && p.category === "Management",
+      (p: Row) => p.student_id === bina && p.category === "Admission",
     );
-    assert.equal(binaManagement.mode, "Sponsor");
+    assert.equal(binaAdmission.mode, "Sponsor");
     assert.equal(
       (
-        await request(`/payments/${binaManagement.id}/reverse`, admin, {
+        await request(`/payments/${binaAdmission.id}/reverse`, admin, {
           reason: "Wrong student",
         })
       ).status,
       200,
     );
-    assert.equal(await balance(lions), 760_000);
-    assert.equal(await owed(bina), 500_000);
+    assert.equal(await balance(lions), 1_850_000);
+    assert.equal(await owed(bina), 1_590_000);
 
     // Only students with dues can be listed; the Admin prepares Asha's profile.
     assert.equal(

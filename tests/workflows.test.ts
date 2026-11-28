@@ -7,6 +7,7 @@ import pg from "pg";
 import { Store } from "../server/store.ts";
 import { createApp } from "../server/app.ts";
 import { openDatabase, hashPassword } from "../server/db.ts";
+import { feeDefaults } from "../server/operations.ts";
 import type { Workspace, Preview, Receipt, Student } from "../src/lib.ts";
 
 async function fixture(t: TestContext) {
@@ -538,29 +539,33 @@ test("approval and year promotion charge the admission fee structure once per ac
       .filter((d: Row) => d.student_id === sid && d.period === period)
       .map((d: Row) => [d.category, d.description, d.amount])
       .sort();
-  // Existing students owe Management, Fund and Establishment, for the
-  // application's academic year rather than a month.
+  // Existing students owe each non-zero challan head, for the application's
+  // academic year rather than a month.
   assert.deepEqual(await admissionDues("2025-2026"), [
-    ["Establishment", "Admission · Establishment fee", 840000],
-    ["Fund", "Admission · Hostel fund", 250000],
-    ["Management", "Admission · Management fee", 500000],
+    ["Establishment", "Admission · Establishment Charges", 840000],
+    ["Fund", "Admission · Others", 250000],
+    ["Management", "Admission · Development Fee", 500000],
   ]);
   // Only the Admin edits the structure; new amounts apply to new dues only.
+  // Every head is sent; heads set to ₹0 raise no due.
   const fees = {
-    fee_fresher_management: 500000,
-    fee_fresher_fund: 250000,
-    fee_fresher_caution: 400000,
-    fee_fresher_establishment: 840000,
-    fee_existing_management: 600000,
-    fee_existing_fund: 300000,
-    fee_existing_establishment: 840000,
+    ...Object.fromEntries(Object.keys(feeDefaults).map((k) => [k, 0])),
+    fee_fresher_management_development: 500000,
+    fee_fresher_fund_others: 250000,
+    fee_fresher_fund_caution: 400000,
+    fee_fresher_establishment_establishment: 840000,
+    fee_existing_management_development: 400000,
+    fee_existing_management_guest: 200000,
+    fee_existing_fund_application: 100000,
+    fee_existing_fund_room_rent: 200000,
+    fee_existing_establishment_establishment: 840000,
   };
   assert.equal((await f.request("/fee-structure", manager, fees)).status, 403);
   assert.equal(
     (
       await f.request("/fee-structure", admin, {
         ...fees,
-        fee_existing_fund: -1,
+        fee_existing_fund_room_rent: -1,
       })
     ).status,
     400,
@@ -582,9 +587,11 @@ test("approval and year promotion charge the admission fee structure once per ac
     total: 1740000,
   });
   assert.deepEqual(await admissionDues("2026-2027"), [
-    ["Establishment", "Admission · Establishment fee", 840000],
-    ["Fund", "Admission · Hostel fund", 300000],
-    ["Management", "Admission · Management fee", 600000],
+    ["Establishment", "Admission · Establishment Charges", 840000],
+    ["Fund", "Admission · Application Fee", 100000],
+    ["Fund", "Admission · Room Rent", 200000],
+    ["Management", "Admission · Development Fee", 400000],
+    ["Management", "Admission · Guest Charges", 200000],
   ]);
   assert.equal((await admissionDues("2025-2026"))[1][2], 250000);
   // The same academic year is never charged twice, and Year 3 is final.
@@ -622,7 +629,7 @@ test("approval and year promotion charge the admission fee structure once per ac
     ).body,
     { promoted: 0, repeating: 1, total: 1740000 },
   );
-  // A fresher's approval adds the mess caution deposit under Fund.
+  // A fresher's approval adds the mess Caution Deposit under Fund.
   const fresher = await f.request("/applications", manager, {
     ...a,
     email: "fresh@test.local",
@@ -639,11 +646,65 @@ test("approval and year promotion charge the admission fee structure once per ac
     (d: Row) => d.student_id === freshId,
   );
   assert.deepEqual(fresh.map((d: Row) => [d.description, d.amount]).sort(), [
-    ["Admission · Establishment fee", 840000],
-    ["Admission · Hostel fund", 250000],
-    ["Admission · Management fee", 500000],
-    ["Admission · Mess caution deposit", 400000],
+    ["Admission · Caution Deposit", 400000],
+    ["Admission · Development Fee", 500000],
+    ["Admission · Establishment Charges", 840000],
+    ["Admission · Others", 250000],
   ]);
+  // One payment settles Management and Fund heads together on a single
+  // Admission receipt that lists each head.
+  const due = (description: string) =>
+    fresh.find((d: Row) => d.description === `Admission · ${description}`);
+  const pay = (allocations: Row[]) =>
+    f.request("/payments", admin, {
+      student_id: freshId,
+      amount: allocations.reduce((sum, a) => sum + a.amount, 0),
+      date: "2025-02-01",
+      mode: "Cash",
+      reference: "",
+      idempotency_key: randomUUID(),
+      allocations,
+    });
+  const paid = await pay([
+    { demand_id: due("Caution Deposit").id, amount: 400000 },
+    { demand_id: due("Development Fee").id, amount: 200000 },
+  ]);
+  assert.equal(paid.status, 201, JSON.stringify(paid.body));
+  assert.match(paid.body.receipt, /^ADMISSION-\d{6}$/);
+  const receipt = (await f.request(`/receipts/${paid.body.id}`, admin)).body;
+  assert.equal(receipt.category, "Admission");
+  assert.deepEqual(
+    receipt.allocations
+      .map((a: Row) => [a.category, a.description, a.amount])
+      .sort(),
+    [
+      ["Fund", "Admission · Caution Deposit", 400000],
+      ["Management", "Admission · Development Fee", 200000],
+    ],
+  );
+  // The Admin raises a one-off due under any head; a head already charged
+  // that year is adjusted instead.
+  const raise = (who: string, body: Row) =>
+    f.request("/demands", who, {
+      student_id: freshId,
+      category: "Management",
+      head: "guest",
+      academic_year: "2025-2026",
+      amount: 150000,
+      ...body,
+    });
+  assert.equal((await raise(manager, {})).status, 403);
+  assert.equal((await raise(admin, { head: "caution" })).status, 400);
+  assert.equal((await raise(admin, {})).status, 201);
+  assert.equal((await raise(admin, {})).status, 409);
+  assert.deepEqual(
+    (await f.request("/workspace", admin)).body.demands
+      .filter(
+        (d: Row) => d.student_id === freshId && d.description.includes("Guest"),
+      )
+      .map((d: Row) => [d.category, d.period, d.description, d.balance]),
+    [["Management", "2025-2026", "Admission · Guest Charges", 150000]],
+  );
   const w = (await f.request("/workspace", admin)).body;
   const s = w.students.find((s: Student) => s.id === admitted.body.student_id);
   assert.equal(s.course, "B.Com");

@@ -1,3 +1,4 @@
+import { admissionHeads, payKind, payKinds } from "./challan.js";
 import express, {
   type Request,
   type Response,
@@ -20,7 +21,6 @@ import {
   staff,
   admin,
   supabase,
-  categories,
 } from "./http.js";
 import { feeDefaults, registerOperations } from "./operations.js";
 import {
@@ -76,8 +76,8 @@ export function createApp(
     ${sid !== undefined ? "WHERE p.student_id=?" : ""} ORDER BY p.date DESC,p.id DESC`,
       ...(sid !== undefined ? [sid] : []),
     );
-  // Online payments beyond a student's dues stay with them as credit, per fee
-  // category (each category has its own receipts), net of any refund.
+  // Online payments beyond a student's dues stay with them as credit, per
+  // payment kind (Mess or Admission), net of any refund.
   const refundedSql = db.communities
     ? "COALESCE((SELECT GREATEST(0,(SELECT COALESCE(SUM(r.amount),0) FROM gateway_refunds r WHERE r.order_id=o.id)-o.refund_baseline) FROM gateway_orders o WHERE o.payment_id=p.id),(SELECT COALESCE(SUM(a.refunded_amount),0) FROM allocations a WHERE a.payment_id=p.id))"
     : "0";
@@ -92,7 +92,9 @@ export function createApp(
     for (const c of await credits()) {
       let left = c.credit;
       const open = (await demands(c.student_id))
-        .filter((d) => d.category === c.category && d.balance > 0)
+        .filter(
+          (d) => payKind(d.category) === payKind(c.category) && d.balance > 0,
+        )
         .sort((a, b) => a.period.localeCompare(b.period) || a.id - b.id);
       for (const d of open) {
         const amount = Math.min(left, d.balance);
@@ -748,22 +750,22 @@ export function createApp(
           "Allocation exceeds the outstanding balance or belongs to another student.",
         );
         ensure(
-          !category || category === d.category,
-          "Collect one fee category per payment; each category has its own receipt.",
+          !category || category === payKind(d.category),
+          "Collect Mess and Admission fees separately; each has its own receipt.",
         );
-        category = d.category;
+        category = payKind(d.category);
         total += a.amount;
       }
       // Only a verified online payment may exceed the dues; the excess is
-      // the student's credit in this category.
+      // the student's credit for this payment kind.
       const advance = b.amount - total;
       ensure(
         advance === 0 ||
           (advance > 0 && b.idempotency_key.startsWith("gateway-")),
         "Allocated total must equal the payment amount.",
       );
-      category = category || b.category;
-      ensure(categories.includes(category), "Choose a fee category.");
+      category = category || payKind(String(b.category));
+      ensure(payKinds.includes(category), "Choose Mess or Admission.");
       const seq = await db.get(
         `INSERT INTO receipt_sequences (category,value) VALUES (?,1) ON CONFLICT(${db.key("category")}) DO UPDATE SET value=receipt_sequences.value+1 RETURNING value`,
         category,
@@ -784,6 +786,7 @@ export function createApp(
           .map((a: Row) => {
             const d = selected.find((d) => d.id === a.demand_id)!;
             return {
+              category: d.category,
               period: d.period,
               description: d.description,
               amount: a.amount,
@@ -842,10 +845,15 @@ export function createApp(
             await db.get("SELECT name FROM users WHERE id=?", p.received_by)
           ).name,
           allocations: await db.all(
-            "SELECT a.amount,d.period,d.description FROM allocations a JOIN demands d ON d.id=a.demand_id WHERE a.payment_id=? ORDER BY d.period",
+            "SELECT a.amount,d.category,d.period,d.description FROM allocations a JOIN demands d ON d.id=a.demand_id WHERE a.payment_id=? ORDER BY d.period",
             p.id,
           ),
         };
+    // Receipts from before Admission was one payment covered one category.
+    snapshot.allocations = snapshot.allocations.map((a: Row) => ({
+      category: p.category,
+      ...a,
+    }));
     const {
       id,
       student_id,
@@ -939,6 +947,63 @@ export function createApp(
       );
     });
     res.json({ ok: true });
+  });
+  // The Admin raises one admission due for one student under any challan
+  // head, for an academic year. A head already charged that year is changed
+  // with Adjust instead.
+  app.post("/api/demands", async (req, res) => {
+    admin(res);
+    const b = req.body;
+    const head = admissionHeads
+      .find((g) => g.category === b.category)
+      ?.heads.find((h) => h.key === b.head);
+    ensure(
+      integer(b.student_id) &&
+        head &&
+        typeof b.academic_year === "string" &&
+        /^20\d{2}-20\d{2}$/.test(b.academic_year) &&
+        Number(b.academic_year.slice(5)) ===
+          Number(b.academic_year.slice(0, 4)) + 1 &&
+        integer(b.amount) &&
+        b.amount <= 100_000_000,
+      "Choose a student, fee, head, academic year and an amount up to ₹10,00,000.",
+    );
+    const description = `Admission · ${head!.label}`;
+    await db.transaction(async () => {
+      const student = await db.get(
+        "SELECT name FROM students WHERE id=?",
+        b.student_id,
+      );
+      ensure(student, "Student not found.", 404);
+      ensure(
+        !(await db.get(
+          "SELECT id FROM demands WHERE student_id=? AND category=? AND period=? AND description=?",
+          b.student_id,
+          b.category,
+          b.academic_year,
+          description,
+        )),
+        `${student.name} already has ${b.category} · ${head!.label} for ${b.academic_year}. Adjust that due instead.`,
+        409,
+      );
+      await db.run(
+        "INSERT INTO demands (student_id,category,period,description,amount,finalized_by,created_at) VALUES (?,?,?,?,?,?,?)",
+        b.student_id,
+        b.category,
+        b.academic_year,
+        description,
+        b.amount,
+        me(res).id,
+        now(),
+      );
+      await applyCredit();
+      await audit(
+        me(res),
+        "Due raised",
+        `${student.name} · ${b.category} · ${head!.label} · ${b.academic_year} · ${b.amount / 100} INR`,
+      );
+    });
+    res.status(201).json({ ok: true });
   });
   app.post("/api/settings", async (req, res) => {
     admin(res);
