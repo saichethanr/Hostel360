@@ -80,6 +80,7 @@ import {
   FeeStructure,
   BlocksSettings,
   RoomPicker,
+  useFormChanged,
 } from "./operations";
 import { TokensPage, MealPricesSettings, PublicTokenPage } from "./tokens";
 import { MessChallan } from "./challan";
@@ -1796,6 +1797,7 @@ function AttendancePage({
   // Approved by the Warden or Admin: these students stay on Leave for the day.
   const [onLeave, setOnLeave] = useState<Set<number>>(new Set());
   const [dirty, setDirty] = useState(false);
+  const [prefilled, setPrefilled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1808,15 +1810,38 @@ function AttendancePage({
     api<Attendance[]>(`/attendance?date=${date}`)
       .then((rows) => {
         if (active) {
+          const marked = Object.fromEntries(
+            rows.map((r) => [r.student_id, r.status]),
+          );
+          const leave = new Set(
+            rows.filter((r) => r.approved_leave).map((r) => r.student_id),
+          );
+          // An unmarked day starts with everyone present, so staff only tick
+          // the students who are absent. Nothing is saved until they save.
+          const unmarked = data.students.filter(
+            (s) =>
+              s.joined <= date &&
+              (!s.exited || s.exited >= date) &&
+              !leave.has(s.id) &&
+              !marked[s.id],
+          );
+          const fresh =
+            !rows.some((r) => !r.approved_leave) &&
+            unmarked.length > 0 &&
+            !data.demands.some(
+              (d) => d.category === "Mess" && d.period === date.slice(0, 7),
+            );
           setEntries(
-            Object.fromEntries(rows.map((r) => [r.student_id, r.status])),
+            fresh
+              ? {
+                  ...marked,
+                  ...Object.fromEntries(unmarked.map((s) => [s.id, "Present"])),
+                }
+              : marked,
           );
-          setOnLeave(
-            new Set(
-              rows.filter((r) => r.approved_leave).map((r) => r.student_id),
-            ),
-          );
-          setDirty(false);
+          setOnLeave(leave);
+          setDirty(fresh);
+          setPrefilled(fresh);
         }
       })
       .catch((e) => {
@@ -1852,6 +1877,7 @@ function AttendancePage({
         })),
       });
       setDirty(false);
+      setPrefilled(false);
       await onSaved("Attendance saved successfully.");
     } catch (e) {
       setError(errorMessage(e));
@@ -1874,7 +1900,12 @@ function AttendancePage({
           <div>
             <h2>Daily attendance register</h2>
             <p>
-              {Object.keys(entries).length} marked ·{" "}
+              {Object.values(entries).filter((v) => v === "Present").length}{" "}
+              present ·{" "}
+              {Object.values(entries).filter((v) => v === "Absent").length}{" "}
+              absent ·{" "}
+              {Object.values(entries).filter((v) => v === "Leave").length} on
+              leave ·{" "}
               {dirty
                 ? "You have unsaved changes"
                 : "Changes are saved when you click Save attendance"}
@@ -1921,6 +1952,12 @@ function AttendancePage({
             be edited.
           </div>
         )}
+        {prefilled && !loading && (
+          <div className="notice">
+            <CheckCheck size={16} /> Everyone is marked present. Tick only the
+            students who are absent, then click Save attendance.
+          </div>
+        )}
         <div className="table-toolbar">
           <SearchBox
             value={search}
@@ -1943,7 +1980,7 @@ function AttendancePage({
               setDirty(true);
             }}
           >
-            Mark visible present
+            Mark everyone present
           </Button>
         </div>
         {loading ? (
@@ -1956,7 +1993,7 @@ function AttendancePage({
                   <th>Student</th>
                   <th>Room</th>
                   <th>Department</th>
-                  <th>Attendance</th>
+                  <th>Absent?</th>
                 </tr>
               </thead>
               <tbody>
@@ -1979,36 +2016,33 @@ function AttendancePage({
                           Approved leave
                         </span>
                       )}
-                      <div
-                        className="attendance-toggle"
-                        role="group"
-                        aria-label={`${s.name} attendance`}
-                      >
-                        {["Present", "Absent", "Leave"].map((status) => (
-                          <button
-                            key={status}
-                            disabled={
-                              locked || busy || !!error || onLeave.has(s.id)
-                            }
-                            className={
-                              entries[s.id] === status
-                                ? `selected ${status.toLowerCase()}`
-                                : ""
-                            }
-                            aria-pressed={entries[s.id] === status}
-                            onClick={() => {
+                      {!onLeave.has(s.id) && (
+                        <label
+                          className={`absent-check ${entries[s.id] === "Absent" ? "checked" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={locked || busy || !!error}
+                            checked={entries[s.id] === "Absent"}
+                            onChange={(e) => {
                               setEntries((current) => ({
                                 ...current,
-                                [s.id]: status,
+                                [s.id]: e.target.checked ? "Absent" : "Present",
                               }));
                               setDirty(true);
                             }}
-                          >
-                            {entries[s.id] === status && <Check size={12} />}
-                            {status}
-                          </button>
-                        ))}
-                      </div>
+                          />
+                          <span>
+                            {entries[s.id] === "Absent"
+                              ? "Absent"
+                              : entries[s.id] === "Leave"
+                                ? "Leave"
+                                : entries[s.id]
+                                  ? "Present"
+                                  : "Not marked"}
+                          </span>
+                        </label>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -3255,6 +3289,7 @@ function SettingsPage({
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const edits = useFormChanged();
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -3265,6 +3300,7 @@ function SettingsPage({
         hostel_name: f.get("hostel_name"),
         daily_rate: Math.round(Number(f.get("daily_rate")) * 100),
       });
+      edits.saved();
       await onSaved("Settings saved. Historical demands remain unchanged.");
     } catch (err) {
       setError(errorMessage(err));
@@ -3282,7 +3318,12 @@ function SettingsPage({
           </div>
           <Settings2 size={19} />
         </div>
-        <form onSubmit={submit} className="settings-form">
+        <form
+          onSubmit={submit}
+          className="settings-form"
+          ref={edits.ref}
+          onInput={edits.onInput}
+        >
           <Field label="Hostel name">
             <input
               name="hostel_name"
@@ -3311,8 +3352,8 @@ function SettingsPage({
               {error}
             </div>
           )}
-          <Button icon={Check} disabled={busy} type="submit">
-            {busy ? "Saving…" : "Save settings"}
+          <Button icon={Check} disabled={busy || !edits.changed} type="submit">
+            {busy ? "Saving…" : edits.changed ? "Save settings" : "Saved"}
           </Button>
         </form>
       </section>

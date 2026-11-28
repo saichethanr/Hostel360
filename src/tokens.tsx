@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import QRCode from "qrcode";
 import { Printer, QrCode, Search, Ticket } from "lucide-react";
 import { api, money, HOSTEL, type Workspace } from "./lib";
-import { useConfirm, ThemeToggle } from "./operations";
+import { useConfirm, ThemeToggle, useFormChanged } from "./operations";
 import { loadCheckout } from "./gateway";
 
 const meals = ["Breakfast", "Lunch", "Dinner"] as const;
@@ -410,6 +410,7 @@ export function MealPricesSettings({
   }
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const edits = useFormChanged();
   return (
     <section className="panel operation-form">
       <div className="panel-heading">
@@ -423,6 +424,8 @@ export function MealPricesSettings({
       </div>
       <form
         className="settings-form"
+        ref={edits.ref}
+        onInput={edits.onInput}
         onSubmit={async (e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
@@ -435,6 +438,7 @@ export function MealPricesSettings({
                 meals.map((m) => [m, Math.round(Number(f.get(m) || 0) * 100)]),
               ),
             );
+            edits.saved();
             await onSaved("Meal token prices saved.");
           } catch (err) {
             setError(errorText(err));
@@ -459,8 +463,8 @@ export function MealPricesSettings({
           ))}
         </div>
         {error && <p className="notice danger">{error}</p>}
-        <button className="button" disabled={busy}>
-          {busy ? "Saving…" : "Save prices"}
+        <button className="button" disabled={busy || !edits.changed}>
+          {busy ? "Saving…" : edits.changed ? "Save prices" : "Saved"}
         </button>
       </form>
     </section>

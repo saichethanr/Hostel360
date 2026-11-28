@@ -127,6 +127,36 @@ export function ThemeToggle() {
     </button>
   );
 }
+// Settings Save buttons stay disabled until the form differs from what was
+// last saved. `useChanged` compares a controlled form's value; pass "" as the
+// baseline when nothing is saved yet so the defaults can be saved.
+export function useChanged(current: string, baseline = current) {
+  const [saved, setSaved] = useState(baseline);
+  return { changed: current !== saved, saved: () => setSaved(current) };
+}
+// The same for forms with uncontrolled inputs, read through their names.
+export function useFormChanged() {
+  const ref = useRef<HTMLFormElement>(null);
+  const read = () =>
+    ref.current
+      ? JSON.stringify(
+          [...new FormData(ref.current)].map(([k, v]) => [k, String(v)]),
+        )
+      : "";
+  const [saved, setSaved] = useState<string | null>(null);
+  const [current, setCurrent] = useState("");
+  useEffect(() => {
+    const v = read();
+    setSaved(v);
+    setCurrent(v);
+  }, []);
+  return {
+    ref,
+    onInput: () => setCurrent(read()),
+    changed: saved !== null && current !== saved,
+    saved: () => setSaved(read()),
+  };
+}
 // In-app confirmation pop-up; `ask` resolves true when confirmed.
 type ConfirmRequest = {
   title: string;
@@ -1262,6 +1292,10 @@ export function BlocksSettings({
   const [open, setOpen] = useState<number | null>(null);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const edits = useChanged(
+    JSON.stringify(blocks),
+    saved.length ? JSON.stringify(blocks) : "",
+  );
   const update = (i: number, change: Partial<Block>) =>
     setBlocks(blocks.map((b, j) => (j === i ? { ...b, ...change } : b)));
   const beds = (b: Block, i: number) =>
@@ -1289,6 +1323,7 @@ export function BlocksSettings({
           setError("");
           try {
             await api("/blocks", { blocks });
+            edits.saved();
             await onSaved("Blocks and rooms saved.");
           } catch (err) {
             setError(errorText(err));
@@ -1421,8 +1456,8 @@ export function BlocksSettings({
           {blocks.reduce((sum, b, i) => sum + beds(b, i), 0)} beds in total.
         </p>
         {error && <p className="notice danger">{error}</p>}
-        <button className="button" disabled={busy}>
-          {busy ? "Saving…" : "Save blocks & rooms"}
+        <button className="button" disabled={busy || !edits.changed}>
+          {busy ? "Saving…" : edits.changed ? "Save blocks & rooms" : "Saved"}
         </button>
       </form>
     </section>
@@ -1466,6 +1501,7 @@ export function FeeStructure({
   );
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const edits = useChanged(JSON.stringify(fees));
   const paise = (k: string) => Math.round(Number(fees[k] || 0) * 100);
   const total = (type: "fresher" | "existing") =>
     feeLines(type).reduce((sum, l) => sum + paise(l.key), 0);
@@ -1509,6 +1545,7 @@ export function FeeStructure({
               "/fee-structure",
               Object.fromEntries(keys.map((k) => [k, paise(k)])),
             );
+            edits.saved();
             await onSaved("Fee structure saved. It applies to new dues only.");
           } catch (err) {
             setError(errorText(err));
@@ -1570,8 +1607,8 @@ export function FeeStructure({
           than an existing student’s. Mess is billed monthly, separately.
         </p>
         {error && <p className="notice danger">{error}</p>}
-        <button className="button" disabled={busy}>
-          {busy ? "Saving…" : "Save fee structure"}
+        <button className="button" disabled={busy || !edits.changed}>
+          {busy ? "Saving…" : edits.changed ? "Save fee structure" : "Saved"}
         </button>
       </form>
     </section>
@@ -1878,7 +1915,13 @@ function Accounts({
             {
               name: "role",
               label: "Role",
-              options: choices(["Manager", "Warden", "Student", "Sponsor", "Admin"]),
+              options: choices([
+                "Manager",
+                "Warden",
+                "Student",
+                "Sponsor",
+                "Admin",
+              ]),
             },
             {
               name: "student_id",

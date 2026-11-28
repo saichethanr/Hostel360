@@ -683,3 +683,13 @@
 :root[data-theme="dark"] .token-search {
   border-color: hsl(100 9% 24%);
 }
+
+:root[data-theme="dark"] .absent-check {
+  border-color: hsl(100 9% 24%);
+  color: hsl(145 45% 70%);
+}
+:root[data-theme="dark"] .absent-check.checked {
+  border-color: hsl(5 45% 40%);
+  background: hsl(5 40% 18%);
+  color: hsl(5 80% 80%);
+}

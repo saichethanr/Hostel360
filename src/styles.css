@@ -4139,3 +4139,32 @@ button.community-choice:focus-visible {
     border: 0;
   }
 }
+
+/* Attendance: everyone starts present; tick the absentees. */
+.absent-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #11683d;
+}
+.absent-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: #b3261e;
+  cursor: pointer;
+}
+.absent-check.checked {
+  border-color: #e6b3ae;
+  background: #fdecea;
+  color: #b3261e;
+}
+.absent-check:has(input:disabled) {
+  cursor: default;
+  opacity: 0.7;
+}
