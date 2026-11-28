@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { OnlinePayments } from "./gateway";
-import { LeavePage } from "./leave";
+import { LeavePage, HolidaySettings } from "./leave";
 import { AppealPage, SponsorPage, SponsorshipAdmin } from "./sponsorship";
 import {
   ArrowDownToLine,
@@ -1826,6 +1826,7 @@ function AttendancePage({
               !marked[s.id],
           );
           const fresh =
+            !data.holidays?.some((h) => h.date === date) &&
             !rows.some((r) => !r.approved_leave) &&
             unmarked.length > 0 &&
             !data.demands.some(
@@ -1857,6 +1858,7 @@ function AttendancePage({
   const locked = data.demands.some(
     (d) => d.category === "Mess" && d.period === date.slice(0, 7),
   );
+  const holiday = data.holidays?.find((h) => h.date === date);
   const students = data.students.filter(
     (s) =>
       s.joined <= date &&
@@ -1934,7 +1936,7 @@ function AttendancePage({
             />
             <Button
               icon={Check}
-              disabled={locked || busy || loading || !dirty}
+              disabled={locked || !!holiday || busy || loading || !dirty}
               onClick={save}
             >
               {busy ? "Saving…" : "Save attendance"}
@@ -1952,38 +1954,46 @@ function AttendancePage({
             be edited.
           </div>
         )}
+        {holiday && (
+          <div className="notice">
+            <CalendarDays size={16} /> {holiday.name} · This day is a holiday.
+            No attendance is needed and it is not charged for mess.
+          </div>
+        )}
         {prefilled && !loading && (
           <div className="notice">
             <CheckCheck size={16} /> Everyone is marked present. Tick only the
             students who are absent, then click Save attendance.
           </div>
         )}
-        <div className="table-toolbar">
-          <SearchBox
-            value={search}
-            onChange={setSearch}
-            placeholder="Search student, room or department…"
-          />
-          <Button
-            variant="secondary"
-            icon={CheckCheck}
-            disabled={locked || loading || busy || !!error}
-            onClick={() => {
-              setEntries((current) => ({
-                ...current,
-                ...Object.fromEntries(
-                  students
-                    .filter((s) => !onLeave.has(s.id))
-                    .map((s) => [s.id, "Present"]),
-                ),
-              }));
-              setDirty(true);
-            }}
-          >
-            Mark everyone present
-          </Button>
-        </div>
-        {loading ? (
+        {!holiday && (
+          <div className="table-toolbar">
+            <SearchBox
+              value={search}
+              onChange={setSearch}
+              placeholder="Search student, room or department…"
+            />
+            <Button
+              variant="secondary"
+              icon={CheckCheck}
+              disabled={locked || loading || busy || !!error}
+              onClick={() => {
+                setEntries((current) => ({
+                  ...current,
+                  ...Object.fromEntries(
+                    students
+                      .filter((s) => !onLeave.has(s.id))
+                      .map((s) => [s.id, "Present"]),
+                  ),
+                }));
+                setDirty(true);
+              }}
+            >
+              Mark everyone present
+            </Button>
+          </div>
+        )}
+        {holiday ? null : loading ? (
           <div className="empty">Loading attendance…</div>
         ) : (
           <div className="table-scroll">
@@ -2351,9 +2361,10 @@ function DemandPreview({
           </Button>
         </div>
         <div className="notice">
-          <ShieldCheck size={16} /> Provisional rule: Present days ×{" "}
-          {money(Number(data.settings.daily_rate))}/day. Leave and Absent are
-          not charged.
+          <ShieldCheck size={16} /> Present days ×{" "}
+          {money(Number(data.settings.daily_rate))}/day. Absent days, holidays
+          and leave with a mess concession are not charged; leave without a
+          concession is charged like a present day.
         </div>
         {error && (
           <div className="notice danger" role="alert">
@@ -2371,6 +2382,14 @@ function DemandPreview({
                     ? "Missing attendance must be completed before this month can be finalized."
                     : "Attendance is complete. Review the rows below before finalizing."}
             </div>
+            {!!preview.holidays && (
+              <div className="notice">
+                {preview.holidays} holiday
+                {preview.holidays === 1 ? "" : "s"} this month{" "}
+                {preview.holidays === 1 ? "is" : "are"} left out of every
+                student’s days.
+              </div>
+            )}
             <div className="preview-total">
               <span>Total proposed demand</span>
               <strong>{money(preview.total)}</strong>
@@ -3381,6 +3400,7 @@ function SettingsPage({
         </div>
       </section>
       <BlocksSettings data={data} onSaved={onSaved} />
+      <HolidaySettings data={data} onSaved={onSaved} />
       <MealPricesSettings data={data} onSaved={onSaved} />
       <FeeStructure data={data} onSaved={onSaved} />
     </div>

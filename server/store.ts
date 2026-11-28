@@ -5,7 +5,7 @@ import pg, { type PoolClient } from "pg";
 export type Row = Record<string, any>;
 pg.types.setTypeParser(20, Number);
 const tables =
-  "students|users|sessions|attendance|demands|payments|allocations|receipt_sequences|settings|audit|applications|fee_components|room_history|documents|import_batches|billing_periods|login_attempts|communities|identities|onboarding_attempts|gateway_orders|gateway_refunds|leaves|sponsors|sponsor_contributions|sponsor_grants|sponsor_listings|sponsor_files|sponsor_orders|meal_tokens";
+  "students|users|sessions|attendance|demands|payments|allocations|receipt_sequences|settings|audit|applications|fee_components|room_history|documents|import_batches|billing_periods|login_attempts|communities|identities|onboarding_attempts|gateway_orders|gateway_refunds|leaves|sponsors|sponsor_contributions|sponsor_grants|sponsor_listings|sponsor_files|sponsor_orders|meal_tokens|holidays";
 
 // Both adapters execute the same statements. A transaction owns its connection;
 // no request can accidentally execute inside another request's transaction.

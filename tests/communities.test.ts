@@ -73,6 +73,7 @@ test(
       "20261123010000_leave_warden",
       "20261124010000_sponsors",
       "20261125010000_meal_tokens",
+      "20261128010000_holidays_concession",
     ])
       await owner.query(
         await readFile(
@@ -486,11 +487,20 @@ test(
             ).status,
             200,
           );
-          const promoted = await request("/students/promote", c.code, c.cookie, {
-            academic_year: "2026-2027",
-            student_ids: [s.body.id],
+          const promoted = await request(
+            "/students/promote",
+            c.code,
+            c.cookie,
+            {
+              academic_year: "2026-2027",
+              student_ids: [s.body.id],
+            },
+          );
+          assert.deepEqual(promoted.body, {
+            promoted: 1,
+            repeating: 0,
+            total: amount,
           });
-          assert.deepEqual(promoted.body, { promoted: 1, repeating: 0, total: amount });
           const demand = (await request("/workspace", c.code, c.cookie)).body
             .demands[0];
           const payment = {

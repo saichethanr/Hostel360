@@ -693,3 +693,16 @@
   background: hsl(5 40% 18%);
   color: hsl(5 80% 80%);
 }
+:root[data-theme="dark"] .concession-check {
+  border-color: hsl(100 9% 24%);
+}
+:root[data-theme="dark"] .calendar-day.holiday,
+:root[data-theme="dark"] .calendar-legend .holiday {
+  background: hsl(215 30% 22%);
+  color: hsl(215 60% 85%);
+  border-color: hsl(215 30% 35%);
+}
+:root[data-theme="dark"] .holiday-list,
+:root[data-theme="dark"] .holiday-row {
+  border-color: hsl(100 9% 24%);
+}

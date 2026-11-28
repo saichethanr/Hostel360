@@ -23,7 +23,12 @@ import {
   categories,
 } from "./http.js";
 import { feeDefaults, registerOperations } from "./operations.js";
-import { onLeave, registerLeaves } from "./leaves.js";
+import {
+  chargedLeaveDays,
+  holidayDates,
+  onLeave,
+  registerLeaves,
+} from "./leaves.js";
 import { saveBackup } from "./backup.js";
 import { registerCommunities } from "./communities.js";
 import { registerSponsors } from "./sponsors.js";
@@ -384,6 +389,14 @@ export function createApp(
             ).count,
           }
         : {}),
+      // Declared holidays, for attendance and the leave calendar.
+      ...(db.communities && !sponsor
+        ? {
+            holidays: await db.all(
+              "SELECT id,date,name FROM holidays ORDER BY date LIMIT 2000",
+            ),
+          }
+        : {}),
       // Staff see how many meal tokens are open right now.
       ...(db.communities && ["Admin", "Manager"].includes(user.role)
         ? {
@@ -451,6 +464,11 @@ export function createApp(
       ensure(
         !(await locked(date.slice(0, 7))),
         "This month has finalized demands. Attendance is locked.",
+        409,
+      );
+      ensure(
+        !(await holidayDates(db, date, date)).has(date),
+        "This day is a holiday. No attendance is needed.",
         409,
       );
       const students = await db.all(
@@ -530,18 +548,29 @@ export function createApp(
       `${period}-01`,
       end,
     );
+    // Holidays are neither expected nor charged. Leave days are free only
+    // with a mess concession; without one they are charged like present days.
+    const holidays = await holidayDates(db, `${period}-01`, end);
+    const charged = await chargedLeaveDays(db, `${period}-01`, end);
     const counts = new Map<number, { recorded: number; days: number }>();
     for (const a of entries) {
+      if (holidays.has(a.date)) continue;
       const c = counts.get(a.student_id) || { recorded: 0, days: 0 };
       c.recorded++;
-      if (a.status === "Present") c.days++;
+      if (
+        a.status === "Present" ||
+        (a.status === "Leave" && charged.has(`${a.student_id}|${a.date}`))
+      )
+        c.days++;
       counts.set(a.student_id, c);
     }
     const rows = students.map((s) => {
       const start = s.joined > `${period}-01` ? s.joined : `${period}-01`,
         finish = s.exited && s.exited < end ? s.exited : end;
       const expected =
-        Math.round((Date.parse(finish) - Date.parse(start)) / 86400_000) + 1;
+        Math.round((Date.parse(finish) - Date.parse(start)) / 86400_000) +
+        1 -
+        [...holidays].filter((d) => d >= start && d <= finish).length;
       const c = counts.get(s.id) || { recorded: 0, days: 0 };
       return {
         student_id: s.id,
@@ -557,6 +586,7 @@ export function createApp(
     return {
       period,
       rate,
+      holidays: holidays.size,
       rows,
       total: rows.reduce((v, r) => v + r.amount, 0),
       finalized: await locked(period),

@@ -32,6 +32,7 @@ test(
       "20261123010000_leave_warden",
       "20261124010000_sponsors",
       "20261125010000_meal_tokens",
+      "20261128010000_holidays_concession",
     ])
       await owner.query(
         await readFile(
@@ -40,7 +41,7 @@ test(
         ),
       );
     await owner.query(
-      `GRANT USAGE ON SCHEMA hostel360 TO ${role}; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA hostel360 TO ${role}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA hostel360 TO ${role}; GRANT DELETE ON hostel360.sessions,hostel360.login_attempts,hostel360.onboarding_attempts TO ${role}`,
+      `GRANT USAGE ON SCHEMA hostel360 TO ${role}; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA hostel360 TO ${role}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA hostel360 TO ${role}; GRANT DELETE ON hostel360.sessions,hostel360.login_attempts,hostel360.onboarding_attempts,hostel360.holidays TO ${role}`,
     );
     const pool = new pg.Pool({
       connectionString: url,
@@ -182,7 +183,8 @@ test(
       end_date: "2026-11-04",
       reason: "Family function",
     };
-    assert.equal((await request("/leaves", admin, casual)).status, 403);
+    // Staff record leave for a named student only.
+    assert.equal((await request("/leaves", admin, casual)).status, 400);
     assert.equal(
       (await apply(asha, { ...casual, end_date: "2026-11-01" })).status,
       400,
@@ -198,14 +200,30 @@ test(
       ).status,
       409,
     );
-    // Medical leave needs a document, which is stored privately.
+    // A medical document is optional; when given it is stored privately.
     const medical = {
       type: "Medical",
       start_date: "2026-11-10",
       end_date: "2026-11-11",
       reason: "Fever",
     };
-    assert.equal((await apply(bina, medical)).status, 400);
+    assert.equal(
+      (
+        await apply(bina, {
+          ...medical,
+          start_date: "2026-11-24",
+          end_date: "2026-11-25",
+        })
+      ).status,
+      201,
+    );
+    const undocumented = (await request("/leaves", bina.cookie)).body[0];
+    assert.equal(undocumented.document_id, null);
+    assert.equal(
+      (await request(`/leaves/${undocumented.id}/cancel`, bina.cookie, {}))
+        .status,
+      200,
+    );
     process.env.SUPABASE_URL = `http://127.0.0.1:${(storage.address() as Row).port}`;
     process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
     assert.equal(
@@ -235,14 +253,18 @@ test(
     // Students see only their own requests; the Warden is told what waits.
     const mine = (await request("/leaves", bina.cookie)).body;
     assert.deepEqual(
-      mine.map((l: Row) => [l.type, l.status, l.document_name]),
+      mine
+        .filter((l: Row) => l.status !== "Cancelled")
+        .map((l: Row) => [l.type, l.status, l.document_name]),
       [["Medical", "Pending", "certificate.pdf"]],
     );
     assert.equal((await request("/workspace", warden)).body.pending_leaves, 2);
     assert.equal((await request("/workspace", admin)).body.pending_leaves, 2);
     const all = (await request("/leaves", warden)).body;
     const ashaLeave = all.find((l: Row) => l.student_id === asha.id),
-      binaLeave = all.find((l: Row) => l.student_id === bina.id);
+      binaLeave = all.find(
+        (l: Row) => l.student_id === bina.id && l.status === "Pending",
+      );
     // Students cannot decide leave, not even their own.
     assert.equal(
       (
@@ -260,17 +282,27 @@ test(
       ).status,
       400,
     );
+    // Approving means deciding the mess concession too.
     assert.equal(
       (
         await request(`/leaves/${ashaLeave.id}/review`, warden, {
           status: "Approved",
         })
       ).status,
-      200,
+      400,
     );
     assert.equal(
       (
-        // The Admin can decide leave too.
+        await request(`/leaves/${ashaLeave.id}/review`, warden, {
+          status: "Approved",
+          concession: false,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      // The Admin can decide leave too.
+      (
         await request(`/leaves/${binaLeave.id}/review`, admin, {
           status: "Rejected",
           reason: "Certificate is unreadable",
@@ -358,5 +390,115 @@ test(
       ).status,
       409,
     );
+
+    // The Warden records leave for a student: approved at once, with a
+    // concession, and marked Leave in attendance.
+    assert.equal(
+      (
+        await request("/leaves", warden, {
+          student_id: bina.id,
+          type: "Casual",
+          start_date: "2026-11-06",
+          end_date: "2026-11-07",
+          reason: "Sports meet",
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await request("/leaves", warden, {
+          student_id: bina.id,
+          type: "Casual",
+          start_date: "2026-11-06",
+          end_date: "2026-11-07",
+          reason: "Sports meet",
+          concession: true,
+        })
+      ).status,
+      201,
+    );
+    const recorded = (await request("/leaves", admin)).body.find(
+      (l: Row) => l.student_id === bina.id && l.start_date === "2026-11-06",
+    );
+    assert.deepEqual(
+      [recorded.status, recorded.concession, recorded.requested_role],
+      ["Approved", 1, "Warden"],
+    );
+    assert.equal(
+      (await request("/attendance?date=2026-11-06", admin)).body.find(
+        (r: Row) => r.student_id === bina.id,
+      ).approved_leave,
+      true,
+    );
+
+    // A full register for 1–10 November, plus the 14th before it becomes a
+    // holiday: Bina is absent on the 8th.
+    for (const date of [
+      ...Array.from(
+        { length: 10 },
+        (_, i) => `2026-11-${String(i + 1).padStart(2, "0")}`,
+      ),
+      "2026-11-14",
+    ])
+      assert.equal(
+        (
+          await request("/attendance", admin, {
+            date,
+            entries: [
+              { student_id: asha.id, status: "Present" },
+              {
+                student_id: bina.id,
+                status: date === "2026-11-08" ? "Absent" : "Present",
+              },
+            ],
+          })
+        ).status,
+        200,
+      );
+
+    // Only the Admin declares holidays; no attendance is taken on them.
+    const holiday = {
+      start_date: "2026-11-14",
+      end_date: "2026-11-15",
+      name: "Hostel holiday",
+    };
+    assert.equal((await request("/holidays", warden, holiday)).status, 403);
+    assert.equal((await request("/holidays", admin, holiday)).status, 201);
+    assert.equal(
+      (
+        await request("/attendance", admin, {
+          date: "2026-11-15",
+          entries: [{ student_id: asha.id, status: "Present" }],
+        })
+      ).status,
+      409,
+    );
+
+    // Mess finalization: holidays are neither expected nor charged (even the
+    // 14th, marked Present earlier); Asha's leave without concession is
+    // charged, Bina's leave with concession is not.
+    const bill = async () =>
+      Object.fromEntries(
+        (
+          await request("/mess/preview", admin, { period: "2026-11" })
+        ).body.rows.map((r: Row) => [r.student_id, [r.days, r.expected]]),
+      );
+    // Asha: 1, 5–10 present + 2–4 leave without concession = 10 of 28 days.
+    // Bina: 1–5, 9, 10 present; 6–7 concession leave and the 8th absent are free.
+    assert.deepEqual(await bill(), {
+      [asha.id]: [10, 28],
+      [bina.id]: [7, 28],
+    });
+    const holidays = (await request("/holidays", admin)).body;
+    assert.deepEqual(
+      holidays.map((h: Row) => h.date),
+      ["2026-11-14", "2026-11-15"],
+    );
+    assert.equal(
+      (await request(`/holidays/${holidays[1].id}/delete`, admin, {})).status,
+      200,
+    );
+    assert.deepEqual((await bill())[asha.id], [10, 29]);
   },
 );

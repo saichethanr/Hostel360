@@ -4168,3 +4168,65 @@ button.community-choice:focus-visible {
   cursor: default;
   opacity: 0.7;
 }
+
+/* Leave: mess concession choice. */
+.concession-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  margin-right: auto;
+}
+.concession-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--green);
+}
+.concession-check span {
+  display: grid;
+  gap: 1px;
+}
+.concession-check small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.leave-actions .concession-check {
+  flex-basis: 100%;
+}
+.form-grid .concession-check.wide {
+  grid-column: 1 / -1;
+}
+
+/* Holidays */
+.calendar-day.holiday {
+  background: #e4ecf7;
+  color: #2a4d7a;
+}
+.calendar-day .holiday-name {
+  font-weight: 600;
+}
+.calendar-legend .holiday {
+  background: #e4ecf7;
+  border: 1px solid #b9cbe6;
+}
+.holiday-list {
+  border-top: 1px solid var(--line);
+  padding: 8px 23px 16px;
+}
+.holiday-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.holiday-row:last-child {
+  border-bottom: 0;
+}
+.holiday-row strong {
+  margin-right: 8px;
+}

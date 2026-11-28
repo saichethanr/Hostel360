@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { api, dateName, type Workspace } from "./lib";
 import { useConfirm } from "./operations";
 
+type Holiday = { id: number; date: string; name: string };
+
 type Leave = {
   id: number;
   student_id: number;
@@ -18,6 +20,10 @@ type Leave = {
   document_name: string | null;
   decision_reason: string;
   decided_name: string | null;
+  // 1: approved days are free of mess charges; 0: they are charged.
+  concession: number;
+  requested_name: string | null;
+  requested_role: string | null;
 };
 
 const errorText = (e: unknown) =>
@@ -85,11 +91,15 @@ export function LeavePage({
         <ApplyLeave data={data} leaves={leaves} onSaved={saved} />
       )}
       {(role === "Warden" || role === "Admin") && (
-        <Decisions leaves={leaves} onSaved={saved} />
+        <>
+          <Decisions leaves={leaves} onSaved={saved} />
+          <ApplyLeave data={data} leaves={leaves} onSaved={saved} staff />
+        </>
       )}
       <LeaveCalendar
         today={data.today}
         leaves={leaves}
+        holidays={data.holidays ?? []}
         own={role === "Student"}
       />
       <LeaveHistory leaves={leaves} own={role === "Student"} onSaved={saved} />
@@ -97,23 +107,37 @@ export function LeavePage({
   );
 }
 
+// Students apply for themselves; a Warden or Admin records leave for a
+// student, approved at once with their concession decision.
 function ApplyLeave({
   data,
   leaves,
   onSaved,
+  staff = false,
 }: {
   data: Workspace;
   leaves: Leave[];
   onSaved: (message: string) => Promise<void>;
+  staff?: boolean;
 }) {
   const [type, setType] = useState("Casual");
+  const [student, setStudent] = useState("");
+  const [concession, setConcession] = useState(true);
+  const students = data.students.filter(
+    (s) => s.status === "Active" && (!s.exited || s.exited >= data.today),
+  );
   const [start, setStart] = useState(shift(data.today, 1));
   const [end, setEnd] = useState(shift(data.today, 1));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const days = dayCount(start, end);
   const clash = leaves.find(
-    (l) => live(l) && l.start_date <= end && l.end_date >= start,
+    (l) =>
+      live(l) &&
+      (!staff || l.student_id === Number(student)) &&
+      (!staff || student) &&
+      l.start_date <= end &&
+      l.end_date >= start,
   );
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -122,11 +146,10 @@ function ApplyLeave({
     setBusy(true);
     setError("");
     try {
+      // A document is optional for both types of leave.
       const file = f.get("document");
       let document;
-      if (type === "Medical") {
-        if (!(file instanceof File) || !file.size)
-          throw Error("Add a medical document showing the ailment.");
+      if (file instanceof File && file.size) {
         if (file.size > 2_000_000)
           throw Error("The document must be under 2 MB.");
         document = { name: file.name, content: await readFile(file) };
@@ -137,13 +160,18 @@ function ApplyLeave({
         end_date: end,
         reason: String(f.get("reason") || ""),
         ...(document ? { document } : {}),
+        ...(staff ? { student_id: Number(student), concession } : {}),
       });
       form.reset();
       setType("Casual");
       setStart(shift(data.today, 1));
       setEnd(shift(data.today, 1));
+      setStudent("");
+      setConcession(true);
       await onSaved(
-        "Leave request sent. The Warden and Admin have been notified.",
+        staff
+          ? `Leave recorded for ${students.find((s) => s.id === Number(student))?.name ?? "the student"}.`
+          : "Leave request sent. The Warden and Admin have been notified.",
       );
     } catch (err) {
       setError(errorText(err));
@@ -155,15 +183,33 @@ function ApplyLeave({
     <section className="panel operation-form">
       <div className="panel-heading">
         <div>
-          <h2>Apply for leave</h2>
+          <h2>{staff ? "Record leave for a student" : "Apply for leave"}</h2>
           <p>
-            The Warden or Admin reviews every request. Approved days are marked
-            as Leave in attendance, so they are not charged for mess.
+            {staff
+              ? "Approved as soon as you save. The days are marked as Leave in attendance."
+              : "The Warden or Admin reviews every request and decides whether the days are free of mess charges."}
           </p>
         </div>
       </div>
       <form className="settings-form" onSubmit={submit}>
         <div className="form-grid">
+          {staff && (
+            <label className="field wide">
+              <span>Student</span>
+              <select
+                required
+                value={student}
+                onChange={(e) => setStudent(e.target.value)}
+              >
+                <option value="">Choose a student…</option>
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} · {s.code} · Room {s.room || "—"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="field">
             <span>Type of leave</span>
             <select value={type} onChange={(e) => setType(e.target.value)}>
@@ -203,25 +249,30 @@ function ApplyLeave({
             <span>Reason</span>
             <textarea name="reason" required maxLength={500} />
           </label>
-          {type === "Medical" && (
-            <label className="field wide">
-              <span>
-                Medical document showing the ailment (PDF, JPG or PNG, up to 2
-                MB)
-              </span>
-              <input
-                type="file"
-                name="document"
-                required
-                accept="application/pdf,image/png,image/jpeg"
-              />
-            </label>
+          <label className="field wide">
+            <span>
+              {type === "Medical" ? "Medical document" : "Supporting document"}{" "}
+              — optional (PDF, JPG or PNG, up to 2 MB)
+            </span>
+            <input
+              type="file"
+              name="document"
+              accept="application/pdf,image/png,image/jpeg"
+            />
+          </label>
+          {staff && (
+            <Concession
+              checked={concession}
+              onChange={setConcession}
+              className="wide"
+            />
           )}
         </div>
         {clash && (
           <p className="notice danger">
-            You already have leave from {dateName(clash.start_date)} to{" "}
-            {dateName(clash.end_date)}. Choose other days.
+            {staff ? `${clash.name} already has` : "You already have"} leave
+            from {dateName(clash.start_date)} to {dateName(clash.end_date)}.
+            Choose other days.
           </p>
         )}
         {error && (
@@ -229,8 +280,15 @@ function ApplyLeave({
             {error}
           </p>
         )}
-        <button className="button" disabled={busy || !days || !!clash}>
-          {busy ? "Sending…" : "Send leave request"}
+        <button
+          className="button"
+          disabled={busy || !days || !!clash || (staff && !student)}
+        >
+          {busy
+            ? "Saving…"
+            : staff
+              ? "Record approved leave"
+              : "Send leave request"}
         </button>
       </form>
     </section>
@@ -248,6 +306,8 @@ function Decisions({
     .filter((l) => l.status === "Pending")
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
   const [reasons, setReasons] = useState<Record<number, string>>({});
+  // Concession is ticked by default; untick to charge mess for the days.
+  const [noConcession, setNoConcession] = useState<Set<number>>(new Set());
   const [rejecting, setRejecting] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -258,10 +318,15 @@ function Decisions({
       await api(`/leaves/${l.id}/review`, {
         status,
         reason: reasons[l.id] || "",
+        ...(status === "Approved"
+          ? { concession: !noConcession.has(l.id) }
+          : {}),
       });
       setRejecting(null);
       await onSaved(
-        `${l.name}'s leave ${status === "Approved" ? "approved" : "rejected"}.`,
+        status === "Approved"
+          ? `${l.name}'s leave approved${noConcession.has(l.id) ? " without a mess concession" : " with a mess concession"}.`
+          : `${l.name}'s leave rejected.`,
       );
     } catch (e) {
       setError(errorText(e));
@@ -280,7 +345,8 @@ function Decisions({
             )}
           </h2>
           <p>
-            Review each request, and the medical document for medical leave.
+            Review each request and any document. Decide whether the leave days
+            are free of mess charges before approving.
           </p>
         </div>
       </div>
@@ -339,6 +405,15 @@ function Decisions({
               </div>
             ) : (
               <div className="leave-actions">
+                <Concession
+                  checked={!noConcession.has(l.id)}
+                  onChange={(on) => {
+                    const next = new Set(noConcession);
+                    if (on) next.delete(l.id);
+                    else next.add(l.id);
+                    setNoConcession(next);
+                  }}
+                />
                 <button
                   className="button"
                   disabled={busy}
@@ -362,6 +437,34 @@ function Decisions({
   );
 }
 
+function Concession({
+  checked,
+  onChange,
+  className = "",
+}: {
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <label className={`concession-check ${className}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        <strong>Give mess concession</strong>
+        <small>
+          {checked
+            ? "Leave days are not charged for mess."
+            : "Mess is charged for these days."}
+        </small>
+      </span>
+    </label>
+  );
+}
+
 function DocumentButton({ id, name }: { id: number; name: string | null }) {
   const [error, setError] = useState("");
   return (
@@ -377,7 +480,7 @@ function DocumentButton({ id, name }: { id: number; name: string | null }) {
           }
         }}
       >
-        <FileText size={14} /> {name || "Medical document"}
+        <FileText size={14} /> {name || "Document"}
       </button>
       {error && <small className="danger-text"> {error}</small>}
     </>
@@ -389,10 +492,12 @@ function DocumentButton({ id, name }: { id: number; name: string | null }) {
 function LeaveCalendar({
   today,
   leaves,
+  holidays,
   own,
 }: {
   today: string;
   leaves: Leave[];
+  holidays: Holiday[];
   own: boolean;
 }) {
   const [month, setMonth] = useState(today.slice(0, 7));
@@ -462,6 +567,7 @@ function LeaveCalendar({
         {cells.map((date, i) => {
           if (!date) return <div key={`blank-${i}`} />;
           const list = onDay(date);
+          const holiday = holidays.find((h) => h.date === date);
           const approved = list.filter((l) => l.status === "Approved");
           const pending = list.length - approved.length;
           const mine = own ? list[0] : undefined;
@@ -472,6 +578,7 @@ function LeaveCalendar({
                 "calendar-day",
                 date === today ? "today" : "",
                 date === picked ? "picked" : "",
+                holiday ? "holiday" : "",
                 mine
                   ? `has-leave ${mine.status.toLowerCase()} ${mine.type.toLowerCase()}`
                   : approved.length
@@ -490,6 +597,9 @@ function LeaveCalendar({
               onClick={() => setPicked(date)}
             >
               <span>{Number(date.slice(8))}</span>
+              {holiday && (
+                <small className="holiday-name">{holiday.name}</small>
+              )}
               {own
                 ? mine && <small>{mine.type}</small>
                 : (approved.length > 0 || pending > 0) && (
@@ -515,6 +625,9 @@ function LeaveCalendar({
             <i className="medical" /> Medical
           </span>
         )}
+        <span>
+          <i className="holiday" /> Holiday
+        </span>
       </div>
       {!own && (
         <div className="calendar-day-list">
@@ -621,6 +734,16 @@ function LeaveHistory({
                     {l.status}
                   </span>
                   {l.decided_name && <small>by {l.decided_name}</small>}
+                  {l.status === "Approved" && (
+                    <small>
+                      {l.concession
+                        ? "Mess concession"
+                        : "No concession · mess charged"}
+                    </small>
+                  )}
+                  {l.requested_role && l.requested_role !== "Student" && (
+                    <small>Recorded by {l.requested_name}</small>
+                  )}
                 </td>
                 <td>
                   {l.document_id && !own && (
@@ -659,6 +782,135 @@ function LeaveHistory({
           <div className="empty">
             <h3>No leave requests</h3>
           </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Admin: days the mess is closed. No attendance is taken on holidays and they
+// are left out of mess charges.
+export function HolidaySettings({
+  data,
+  onSaved,
+}: {
+  data: Workspace;
+  onSaved: (message: string) => Promise<void>;
+}) {
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { ask, dialog } = useConfirm();
+  const holidays = data.holidays ?? [];
+  const upcoming = holidays.filter((h) => h.date >= data.today.slice(0, 7));
+  const days = dayCount(start, end);
+  return (
+    <section className="panel operation-form holiday-settings">
+      {dialog}
+      <div className="panel-heading">
+        <div>
+          <h2>Holidays</h2>
+          <p>
+            Days the mess is closed. No attendance is needed on these days and
+            they are not counted in the month’s mess charges.
+          </p>
+        </div>
+      </div>
+      <form
+        className="settings-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError("");
+          try {
+            await api("/holidays", { start_date: start, end_date: end, name });
+            setStart("");
+            setEnd("");
+            setName("");
+            await onSaved(
+              `${name.trim()} added: ${days} holiday${days === 1 ? "" : "s"}.`,
+            );
+          } catch (err) {
+            setError(errorText(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <div className="form-grid">
+          <label className="field wide">
+            <span>Holiday name</span>
+            <input
+              required
+              maxLength={80}
+              placeholder="Diwali, semester break…"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>From</span>
+            <input
+              type="date"
+              required
+              value={start}
+              onChange={(e) => {
+                setStart(e.target.value);
+                if (!end || end < e.target.value) setEnd(e.target.value);
+              }}
+            />
+          </label>
+          <label className="field">
+            <span>To</span>
+            <input
+              type="date"
+              required
+              min={start}
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+            />
+          </label>
+        </div>
+        {error && <p className="notice danger">{error}</p>}
+        <button className="button" disabled={busy || !days || !name.trim()}>
+          {busy ? "Saving…" : days > 1 ? `Add ${days} holidays` : "Add holiday"}
+        </button>
+      </form>
+      <div className="holiday-list">
+        {upcoming.length ? (
+          upcoming.map((h) => (
+            <div key={h.id} className="holiday-row">
+              <span>
+                <strong>{dateName(h.date)}</strong> {h.name}
+              </span>
+              <button
+                className="text-button"
+                onClick={async () => {
+                  if (
+                    !(await ask({
+                      title: `Remove ${h.name} on ${dateName(h.date)}?`,
+                      body: "Attendance will be needed for this day again.",
+                      confirm: "Remove holiday",
+                      danger: true,
+                    }))
+                  )
+                    return;
+                  try {
+                    await api(`/holidays/${h.id}/delete`, {});
+                    await onSaved("Holiday removed.");
+                  } catch (err) {
+                    setError(errorText(err));
+                  }
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))
+        ) : (
+          <p className="empty">No holidays from this month on.</p>
         )}
       </div>
     </section>

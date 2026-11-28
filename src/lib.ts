@@ -70,6 +70,8 @@ export type Attendance = {
 export type Preview = {
   period: string;
   rate: number;
+  // Holidays in the month, left out of every student's days.
+  holidays?: number;
   total: number;
   finalized: boolean;
   closed: boolean;
@@ -96,6 +98,8 @@ export type Workspace = {
   community?: Community;
   pending_members?: number;
   pending_leaves?: number;
+  // Days the Admin declared the mess closed.
+  holidays?: { id: number; date: string; name: string }[];
   // Meal tokens open right now (staff only).
   open_tokens?: number;
   user: {
