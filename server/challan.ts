@@ -1,6 +1,9 @@
 // The hostel mess challan: the printed "Duplicate for Hostel" receipt the
 // office uses for mess payments. Shared by the receipt screen and the email
 // sent to students.
+// The institute's name in Kannada, as printed on every challan.
+export const instituteKannada =
+  "ಜೆಎಸ್‌ಎಸ್ ವಿಶೇಷಚೇತನರ ಪಾಲಿಟೆಕ್ನಿಕ್ ವಿದ್ಯಾರ್ಥಿನಿಲಯ, ಮೈಸೂರು";
 export const messAccount = {
   institute: "JSS Polytechnic for the Differently Abled Hostel",
   campus: "JSS Technical Institutions' Campus",
@@ -9,6 +12,13 @@ export const messAccount = {
   branch: "JSS University Campus Branch, Mysuru-570 006",
   title: "HOSTEL MESS ACCOUNT",
   account: "789101010000002",
+};
+// Admission fees (Management, Fund, Establishment) are receipted together on
+// the Establishment account's challan.
+export const establishmentAccount = {
+  ...messAccount,
+  title: "HOSTEL ESTABLISHMENT ACCOUNT",
+  account: "789102010000464",
 };
 
 const ones = [
@@ -133,6 +143,7 @@ export function challanHtml(c: Challan) {
   return `<div style="max-width:460px;margin:0 auto;background:#f9d9e3;color:#3b2430;font-family:Georgia,serif;padding:20px;border:1px solid #d9a3b4">
   <div style="text-align:right;font-size:13px">Challan No. <strong style="color:#c0395f;font-size:18px">${escape(c.receipt)}</strong><br>Duplicate for Hostel</div>
   <div style="text-align:center;margin:8px 0 12px;line-height:1.4">
+    <span>${instituteKannada}</span><br>
     <strong>${messAccount.institute}</strong><br>${messAccount.campus}<br>${messAccount.city}<br>
     <strong>AMOUNT REMITTED TO ${messAccount.bank}</strong><br>${messAccount.branch}<br>
     <strong>${messAccount.title}</strong><br><strong style="font-size:18px">A/C No. ${messAccount.account}</strong>

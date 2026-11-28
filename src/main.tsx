@@ -83,7 +83,7 @@ import {
   useFormChanged,
 } from "./operations";
 import { TokensPage, MealPricesSettings, PublicTokenPage } from "./tokens";
-import { MessChallan } from "./challan";
+import { AdmissionChallan, MessChallan } from "./challan";
 import "./styles.css";
 import "./dark.css";
 
@@ -3000,6 +3000,8 @@ function ReceiptModal({
     >
       {r.category === "Mess" ? (
         <MessChallan r={r} />
+      ) : ["Management", "Fund", "Establishment"].includes(r.category) ? (
+        <AdmissionChallan r={r} />
       ) : (
         <div className="receipt-paper">
           <div className="receipt-brand">

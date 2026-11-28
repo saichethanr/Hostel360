@@ -3837,6 +3837,14 @@ button.community-choice:focus-visible {
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
 }
+.challan-establishment {
+  background: #fbefb0;
+  border-color: #e3cf73;
+}
+.challan-kannada {
+  font-size: 13px;
+  font-weight: 600;
+}
 .challan-no {
   display: flex;
   justify-content: space-between;
